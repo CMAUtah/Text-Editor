@@ -1,725 +1,643 @@
 // textEditor.js
-
-// Expose exec globally so popups (like source view) can call it
-window.exec = exec;
-
-// We'll save and restore the user’s selection when showing the link modal
-let savedRange = null;
-
-/**
- * Core exec helper
- * Wraps document.execCommand and re-focuses the editor
- */
-function exec(command, value = null) {
-  document.execCommand(command, false, value);
-  editor.focus();  // keep cursor in the editor after the command
-}
-
-/* Open the link-editing modal
- - Saves current selection
- - Prefills the modal with existing link text & URL if caret is on an <a> 
-*/
-function linkPrompt() {
-  const selection = window.getSelection();
-  if (selection.rangeCount) {
-    savedRange = selection.getRangeAt(0);
-  }
-
-  // If we’re inside an <a>, grab its href & text
-  const anchor = selection.anchorNode.closest
-    ? selection.anchorNode.closest('a')
-    : (selection.anchorNode.parentElement.tagName === 'A' && selection.anchorNode.parentElement);
-
-  linkText.value = anchor ? anchor.textContent : selection.toString();
-  linkURL.value  = anchor ? anchor.href        : '';
-  linkModal.style.display = 'flex';
-}
-
-/* Prompt for an image URL and insert it as a resizable block */
-function imagePrompt() {
-  const url = prompt('Enter image URL:');
-  if (url) {
-    exec('insertHTML',
-      `<div class="resizable"><img src="${url}" /></div>`
-    );
-  }
-}
-
-/* Prompt for table dimensions and insert an HTML table */
-function tablePrompt() {
-    // 1) Ask for initial size
-    const rows = parseInt(prompt('Rows?', '5'), 10);
-    const cols = parseInt(prompt('Cols?', '5'), 10);
-    if (!rows || !cols) return;
+(function() {
+    let savedRange = null;
   
-    // 2) Build the modal backdrop
-    const modal = document.createElement('div');
-    Object.assign(modal.style, {
-      position: 'fixed', top: 0, left: 0,
-      width: '100vw', height: '100vh',
-      background: 'rgba(0,0,0,0.5)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: 9999
-    });
-    document.body.appendChild(modal);
-  
-    // 3) Sheet container
-    const holder = document.createElement('div');
-    Object.assign(holder.style, {
-      background: '#fff', padding: '20px', borderRadius: '4px',
-      width: '80vw', height: '80vh',
-      display: 'flex', flexDirection: 'column'
-    });
-    modal.appendChild(holder);
-  
-    // 4) Jspreadsheet container
-    const jspContainer = document.createElement('div');
-    Object.assign(jspContainer.style, { flex: '1', overflow: 'hidden' });
-    holder.appendChild(jspContainer);
-  
-    // 5) Build a rows×cols empty grid
-    const data = Array.from({ length: rows }, () =>
-      Array.from({ length: cols }, () => '')
-    );
-  
-    // 6) Initialize jspreadsheet‐CE
-    const hot = jspreadsheet(jspContainer, {
-      data,
-      rowResize: true,            // drag to resize rows
-      columnResize: true,         // drag to resize columns
-      mergeCells: true,           // enable merge/unmerge
-      contextMenu: true,          // full right-click menu
-      defaultColWidth: 100,
-      defaultRowHeight: 24,
-      allowInsertRow: true,
-      allowInsertColumn: true,
-      allowDeleteRow: true,
-      allowDeleteColumn: true,
-      allowEditBorder: true       // let users style cell borders
-    });
-  
-    // 7) OK / Cancel buttons
-    const btnBar = document.createElement('div');
-    Object.assign(btnBar.style, { textAlign: 'right', marginTop: '8px' });
-    const cancelBtn = document.createElement('button');
-    cancelBtn.textContent = 'Cancel';
-    const okBtn = document.createElement('button');
-    okBtn.textContent = 'OK';
-    cancelBtn.style.marginRight = '8px';
-    btnBar.append(cancelBtn, okBtn);
-    holder.appendChild(btnBar);
-  
-    // 8) Cancel: tear down
-    cancelBtn.addEventListener('click', () => modal.remove());
-  
-    // 9) OK: dump static <table> into editor and tear down
-    okBtn.addEventListener('click', () => {
-      // jspreadsheet‐CE v4 exposes getHtml() for a plain HTML table
-      const htmlTable = hot.getHtml();
-      exec('insertHTML', htmlTable);
-      modal.remove();
-    });
-}
-  
-  
-  
-
-/* Open a new window with printable content and call window.print() */
-function printContent() {
-    // 1) Pull the raw editor HTML
-    let content = editor.innerHTML;
-  
-    // 2) Define your placeholder→span-ID mapping
-    const placeholderMap = {
-      Option1: 'discountedAmountA',
-      // add more as needed, e.g.:
-      // Option2: 'someOtherSpanId',
-    };
-  
-    // 3) Replace each [Key] with the matching span’s textContent
-    for (const [key, spanId] of Object.entries(placeholderMap)) {
-      const span = document.getElementById(spanId);
-      const val  = span ? span.textContent : '';
-      // global replace of [Option1], etc.
-      content = content.replace(
-        new RegExp(`\\[${key}\\]`, 'g'),
-        val
-      );
+    // exec wrapper
+    function exec(command, value = null) {
+      document.execCommand(command, false, value);
+      window.editor.focus();
     }
+    window.exec = exec;
   
-    // 4) Open the print preview as before, using the substituted content
-    const w = window.open('', '_blank', 'width=800,height=600');
-  w.document.write(`
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>Print</title>
-        <style>
-          /* force backgrounds (i.e. your hiliteColor spans) to print */
-          * {
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-          }
-          body   { font-family: sans-serif; margin: 20px; }
-          table  { border-collapse: collapse; }
-          td, th { border: 1px solid #000; padding: 4px; }
-          .resizable {
-            overflow: hidden !important;
-            box-sizing: border-box !important;
-          }
-          .resizable img {
-            width: 100% !important;
-            height: 100% !important;
-            object-fit: fill !important;
-            display: block;
-          }
-            /* hide the drag-handle box when printing */
-          .resizable .drag-handle {
-            display: none !important;
-          }
-
-        </style>
-      </head>
-      <body>${content}</body>
-    </html>
-  `);
-    w.document.close();
-    w.focus();
-    w.print();
-    w.close();
-  }
+    document.addEventListener('DOMContentLoaded', () => {
+      // grab all relevant nodes once
+      const editor        = document.getElementById('editor');
+      const toolbar       = document.getElementById('toolbar');
+      const toggleLockBtn = document.getElementById('toggleLockBtn');
+      const globalPrintBtn= document.getElementById('globalPrintBtn');
   
+      const linkModal     = document.getElementById('linkModal');
+      const linkText      = document.getElementById('linkText');
+      const linkURL       = document.getElementById('linkURL');
+      const linkOk        = document.getElementById('linkOk');
+      const linkCancel    = document.getElementById('linkCancel');
   
+      const marginModal   = document.getElementById('marginModal');
+      const marginTop     = document.getElementById('marginTop');
+      const marginRight   = document.getElementById('marginRight');
+      const marginBottom  = document.getElementById('marginBottom');
+      const marginLeft    = document.getElementById('marginLeft');
+      const marginOk      = document.getElementById('marginOk');
+      const marginCancel  = document.getElementById('marginCancel');
+  
+      const imageUploader = document.getElementById('imageUploader');
+      const spacingMenu   = document.getElementById('spacingMenu');
+  
+      // expose editor globally
+      window.editor = editor;
 
 
-/**
- * Open a source-view popup allowing raw HTML edit
- */
-function viewSource() {
-  const content = editor.innerHTML;
-  const w = window.open('', '_blank', 'width=800,height=600');
+      let isLocked = true;
+      let selectedWrapper = null;
+    
 
-  w.document.write(`
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>Source</title>
-        <style>
-          body { margin: 0; }
-          textarea {
-            width: 100%;
-            height: 90%;
-            font-family: monospace;
-            padding: 10px;
-            box-sizing: border-box;
-          }
-          button {
-            width: 100%;
-            padding: 10px;
-            border: none;
-            background: #007BFF;
-            color: #fff;
-            font-size: 16px;
-            cursor: pointer;
-          }
-        </style>
-      </head>
-      <body>
-        <textarea id="sourceArea">
-${content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}
-        </textarea>
-        <button id="saveBtn">Save</button>
-        <script>
-          // When Save is clicked, replace editor content in opener
-          document.getElementById('saveBtn').addEventListener('click', function() {
-            const val = document.getElementById('sourceArea').value;
-            const html = val.replace(/&lt;/g, '<').replace(/&gt;/g, '>');
-            const op = window.opener;
-            op.focus();
-            op.document.execCommand('selectAll', false, null);
-            op.exec('insertHTML', html);
-            window.close();
-          });
-        <\/script>
-      </body>
-    </html>
-  `);
+        // select wrappers on click instead of mousedown
+        editor.addEventListener('click', e => {
+            if (isLocked) return;
+            const wrapper = e.target.closest('.resizable');
+            if (selectedWrapper && selectedWrapper !== wrapper) {
+            selectedWrapper.classList.remove('selected');
+            }
+            if (wrapper) {
+            selectedWrapper = wrapper;
+            wrapper.classList.add('selected');
+            } else {
+            selectedWrapper = null;
+            }
+        });
+  
+      
 
-  w.document.close();
-  w.focus();
-}
 
-/**
- * Find the closest block-level element we want to adjust spacing on:
- * <p>, <li>, <td>, or <th>
- */
-function getClosestBlock() {
-  const sel = window.getSelection();
-  if (!sel.rangeCount) return null;
-
-  let node = sel.anchorNode;
-  if (node.nodeType === Node.TEXT_NODE) {
-    node = node.parentElement;
-  }
-  return node.closest('p, li, td, th');
-}
-
-/** Set CSS line-height on the current block */
-function setLineSpacing(value) {
-  const blk = getClosestBlock();
-  if (blk) {
-    blk.style.lineHeight = value;
-  }
-}
-
-/** Toggle space before: margin-top for p/li, padding-top for table cells */
-function toggleSpacingBefore() {
-  const blk = getClosestBlock();
-  if (!blk) return;
-
-  const prop = (blk.tagName === 'TD' || blk.tagName === 'TH')
-    ? 'paddingTop'
-    : 'marginTop';
-  const curr = parseFloat(getComputedStyle(blk)[prop]) || 0;
-  blk.style[prop] = (curr > 0 ? 0 : 8) + 'px';
-}
-
-/** Toggle space after: margin-bottom for p/li, padding-bottom for table cells */
-function toggleSpacingAfter() {
-  const blk = getClosestBlock();
-  if (!blk) return;
-
-  const prop = (blk.tagName === 'TD' || blk.tagName === 'TH')
-    ? 'paddingBottom'
-    : 'marginBottom';
-  const curr = parseFloat(getComputedStyle(blk)[prop]) || 0;
-  blk.style[prop] = (curr > 0 ? 0 : 8) + 'px';
-}
-
-/**
- * Main initialization:
- * - Grabs elements
- * - Restores saved content
- * - Wires all event handlers
-*/
-document.addEventListener('DOMContentLoaded', () => {
-  // References to key elements
-  window.editor     = document.getElementById('editor');
-  const linkModal   = document.getElementById('linkModal');
-  const linkText    = document.getElementById('linkText');
-  const linkURL     = document.getElementById('linkURL');
-  const linkOk      = document.getElementById('linkOk');
-  const linkCancel  = document.getElementById('linkCancel');
-  const uploader    = document.getElementById('imageUploader');
-  const spacingMenu = document.getElementById('spacingMenu');
-  const marginModal   = document.getElementById('marginModal');
-  const marginTop     = document.getElementById('marginTop');
-  const marginRight   = document.getElementById('marginRight');
-  const marginBottom  = document.getElementById('marginBottom');
-  const marginLeft    = document.getElementById('marginLeft');
-  const marginOk      = document.getElementById('marginOk');
-  const marginCancel  = document.getElementById('marginCancel');
-  const editor        = document.getElementById('editor');
-  const toolbar       = document.getElementById('toolbar');
-  const toggleLockBtn = document.getElementById('toggleLockBtn');
-
-  // Restore content from localStorage, if present
-  const saved = localStorage.getItem('editorContent');
-  if (saved) {
-    editor.innerHTML = saved;
-  }
-
-  // Auto-save on any input/change
-  editor.addEventListener('input', () => {
-    localStorage.setItem('editorContent', editor.innerHTML);
-  });
-
-    const styleObserver = new MutationObserver(() => {
-        // save any inline style changes (e.g. your resized image wrappers)
+      
+  
+      // restore saved content
+      const saved = localStorage.getItem('editorContent');
+      if (saved) editor.innerHTML = saved;
+  
+      // auto-save on input
+      editor.addEventListener('input', () => {
         localStorage.setItem('editorContent', editor.innerHTML);
-    });
-    styleObserver.observe(editor, {
+      });
+  
+      // persist inline style changes
+      const styleObserver = new MutationObserver(() => {
+        localStorage.setItem('editorContent', editor.innerHTML);
+      });
+      styleObserver.observe(editor, {
         subtree: true,
         attributes: true,
         attributeFilter: ['style']
-    });
-    // restore saved margins (if any)
-        const savedM = localStorage.getItem('editorMargins');
-        if (savedM) {
+      });
+  
+      // restore saved margins
+      const savedM = localStorage.getItem('editorMargins');
+      if (savedM) {
         const m = JSON.parse(savedM);
         editor.style.paddingTop    = m.top    + 'in';
         editor.style.paddingRight  = m.right  + 'in';
         editor.style.paddingBottom = m.bottom + 'in';
         editor.style.paddingLeft   = m.left   + 'in';
-        }
-
-        // 1) start locked
-        let isLocked = true;
-        editor.contentEditable    = 'false';
-        editor.style.border       = '1px solid #ccc';
-        toolbar.style.display     = 'none';
-        toggleLockBtn.textContent = '🔓 Unlock Editing';
-
-    // 2) Toggle handler
-    toggleLockBtn.addEventListener('click', () => {
+      }
+  
+      // lock/unlock editing
+      editor.style.position      = 'relative';
+      editor.contentEditable     = 'false';
+      editor.style.border        = '1px solid #ccc';
+      toolbar.style.display      = 'none';
+      toggleLockBtn.textContent  = '🔓 Unlock Editing';
+      toggleLockBtn.addEventListener('click', () => {
         isLocked = !isLocked;
-
-        // editing on/off
+      
+        // as soon as we lock, clear any blue highlight
+        if (isLocked) {
+          document
+            .querySelectorAll('.resizable.selected')
+            .forEach(w => w.classList.remove('selected'));
+          selectedWrapper = null;
+        }
+      
         editor.contentEditable = (!isLocked).toString();
-
-        // hide/show entire toolbar
-        toolbar.style.display = isLocked ? 'none' : '';
-
-        // border thickness indicator
-        editor.style.border = isLocked
-        ? '1px solid #ccc'
-        : '3px solid #888';
-
-        // update toggle text
+        toolbar.style.display  = isLocked ? 'none' : '';
+        editor.style.border    = isLocked ? '1px solid #ccc' : '3px solid #888';
         toggleLockBtn.textContent = isLocked
-        ? '🔓 Unlock Editing'
-        : '🔒 Lock Editing';
-    });
-
-    // Close the link modal
-    linkCancel.addEventListener('click', () => {
+          ? '🔓 Unlock Editing'
+          : '🔒 Lock Editing';
+      
+        // re-attach or disable drag handles as needed
+        document.querySelectorAll('.resizable').forEach(w => attachDragHandle(w));
+      });
+      
+  
+      // --- LINK PROMPT ---
+      window.linkPrompt = function() {
+        const sel = window.getSelection();
+        if (sel.rangeCount) savedRange = sel.getRangeAt(0);
+        const anchor = sel.anchorNode && typeof sel.anchorNode.closest === 'function'
+          ? sel.anchorNode.closest('a')
+          : null;
+        linkText.value = anchor ? anchor.textContent : sel.toString();
+        linkURL.value  = anchor ? anchor.href        : '';
+        linkModal.style.display = 'flex';
+      };
+      linkCancel.addEventListener('click', () => {
         linkModal.style.display = 'none';
-    });
-
-  //-------------------------------------------------------------------------------------------------------
-
-  // Link modal: OK button handler
-  linkOk.addEventListener('click', () => {
-    linkModal.style.display = 'none';
-    // Restore the selection so we can insert/update
-    if (savedRange) {
-      const sel = window.getSelection();
-      sel.removeAllRanges();
-      sel.addRange(savedRange);
-    }
-    // Read text & URL from inputs
-    const text = linkText.value.trim();
-    let url = linkURL.value.trim();
-    if (!text || !url) return;
-    // Auto-prefix protocol if missing
-    if (!/^https?:\/\//i.test(url)) {
-      url = 'https://' + url;
-    }
-    // If editing an existing <a>, update it; otherwise insert new
-    const sel2 = window.getSelection();
-    const anchor = sel2.anchorNode.closest
-      ? sel2.anchorNode.closest('a')
-      : (sel2.anchorNode.parentElement.tagName === 'A' && sel2.anchorNode.parentElement);
-
-    if (anchor) {
-      anchor.href = url;
-      anchor.textContent = text;
-      anchor.target = '_blank';
-    } else {
-      exec('insertHTML', `<a href="${url}" target="_blank">${text}</a>`);
-    }
-  });
-  //-------------------------------------------------------------------------------------------------------
-    function showMarginModal() {
-    const cs = getComputedStyle(editor);
-    document.getElementById('marginTop').value    = (parseFloat(cs.paddingTop)    / 96).toFixed(2);
-    document.getElementById('marginRight').value  = (parseFloat(cs.paddingRight)  / 96).toFixed(2);
-    document.getElementById('marginBottom').value = (parseFloat(cs.paddingBottom) / 96).toFixed(2);
-    document.getElementById('marginLeft').value   = (parseFloat(cs.paddingLeft)   / 96).toFixed(2);
-    marginModal.style.display = 'flex';
-    }
-    window.showMarginModal = showMarginModal;  // so your inline onclick can see it
-
-    marginOk.addEventListener('click', () => {
+      });
+      linkOk.addEventListener('click', () => {
+        linkModal.style.display = 'none';
+        if (savedRange) {
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(savedRange);
+        }
+        let text = linkText.value.trim();
+        let url  = linkURL.value.trim();
+        if (!text || !url) return;
+        if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+        const sel2 = window.getSelection();
+        const anchor = sel2.anchorNode && typeof sel2.anchorNode.closest === 'function'
+          ? sel2.anchorNode.closest('a')
+          : null;
+        if (anchor) {
+          anchor.href         = url;
+          anchor.textContent  = text;
+          anchor.target       = '_blank';
+        } else {
+          exec('insertHTML', `<a href="${url}" target="_blank">${text}</a>`);
+        }
+      });
+  
+      // --- IMAGE BY URL ---
+      window.imagePrompt = function() {
+        const url = prompt('Enter image URL:');
+        if (url) {
+          exec('insertHTML', `<div class="resizable"><img src="${url}"/></div>`);
+        }
+      };
+  
+      // --- TABLE PROMPT ---
+      window.tablePrompt = function() {
+        const rows = parseInt(prompt('Rows?', '5'), 10);
+        const cols = parseInt(prompt('Cols?', '5'), 10);
+        if (!rows || !cols) return;
+        // build modal + jspreadsheet as before…
+        const modal = document.createElement('div');
+        Object.assign(modal.style, {
+          position:'fixed',top:0,left:0,
+          width:'100vw',height:'100vh',
+          background:'rgba(0,0,0,0.5)',
+          display:'flex',alignItems:'center',justifyContent:'center',
+          zIndex:9999
+        });
+        document.body.appendChild(modal);
+        const holder = document.createElement('div');
+        Object.assign(holder.style, {
+          background:'#fff',padding:'20px',borderRadius:'4px',
+          width:'80vw',height:'80vh',display:'flex',flexDirection:'column'
+        });
+        modal.appendChild(holder);
+        const jspContainer = document.createElement('div');
+        Object.assign(jspContainer.style,{flex:'1',overflow:'hidden'});
+        holder.appendChild(jspContainer);
+        const data = Array.from({ length: rows }, () =>
+          Array.from({ length: cols }, () => '')
+        );
+        const hot = jspreadsheet(jspContainer, {
+          data, rowResize:true, columnResize:true,
+          mergeCells:true, contextMenu:true,
+          defaultColWidth:100, defaultRowHeight:24,
+          allowInsertRow:true, allowInsertColumn:true,
+          allowDeleteRow:true, allowDeleteColumn:true,
+          allowEditBorder:true
+        });
+        const btnBar = document.createElement('div');
+        Object.assign(btnBar.style,{textAlign:'right',marginTop:'8px'});
+        const cancelBtn = document.createElement('button');
+        cancelBtn.textContent = 'Cancel';
+        const okBtn = document.createElement('button');
+        okBtn.textContent = 'OK';
+        cancelBtn.style.marginRight = '8px';
+        btnBar.append(cancelBtn, okBtn);
+        holder.appendChild(btnBar);
+        cancelBtn.addEventListener('click', () => modal.remove());
+        okBtn.addEventListener('click', () => {
+          const htmlTable = typeof hot.getHtml === 'function'
+            ? hot.getHtml()
+            : '';
+          if (htmlTable) exec('insertHTML', htmlTable);
+          modal.remove();
+        });
+      };
+  
+      // --- PRINT CONTENT ---
+      window.printContent = function() {
+        const placeholderMap = { Option1: 'discountedAmountA' };
+        const originalHTML   = editor.innerHTML;
+      
+        // 1) swap placeholders
+        let html = originalHTML;
+        for (const key in placeholderMap) {
+          const span = document.getElementById(placeholderMap[key]);
+          html = html.replace(
+            new RegExp(`\\[${key}\\]`, 'g'),
+            span ? span.textContent : ''
+          );
+        }
+        editor.innerHTML = html;
+      
+        // 2) inject updated print styles
+        const style = document.createElement('style');
+        style.id = 'print-styles';
+        style.textContent = `
+        @page { margin: 0; }
+        @media print {
+          html, body { margin:0; padding:0; }
+      
+          /* force highlights & bg-colors to show */
+          #editor,
+          #editor * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+      
+          /* hide everything but the editor */
+          body > *:not(#editor) { display: none !important; }
+      
+          #editor {
+            position: relative !important;
+            margin: 0 !important;
+            padding: 0.5in 1in 1in 1in !important;
+            border: none !important;
+            box-shadow: none !important;
+          }
+          #editor::before,
+          #editor::after { content: none !important; }
+      
+          .resizable {
+            position: absolute !important;
+            display: block !important;
+            overflow: visible !important;
+            border: none !important;
+            box-shadow: none !important;
+          }
+          .resizable img {
+            display: block !important;
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: fill !important;
+          }
+          .resizable .drag-handle { display: none !important; }
+        }
+      `;
+      
+        document.head.appendChild(style);
+      
+        // 3) print & cleanup
+        window.print();
+        window.onafterprint = () => {
+          document.head.removeChild(style);
+          editor.innerHTML = originalHTML;
+          window.onafterprint = null;
+        };
+      };
+      
+      
+      
+      
+      
+  
+      // --- VIEW SOURCE ---
+      window.viewSource = function() {
+        // 1) Tokenize data-URIs
+        const raw = editor.innerHTML;
+        const dataUris = [];
+        const tokenized = raw.replace(
+          /(<img\b[^>]*\bsrc=")(data:[^"]+)("(?:[^>]*>))/gi,
+          (_, pre, uri, post) => {
+            const idx = dataUris.push(uri) - 1;
+            return `${pre}__IMG_${idx}__${post}`;
+          }
+        );
+        const htmlEsc = tokenized.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      
+        // 2) Open a bigger window
+        const w = window.open('', '_blank', 'width=900,height=700');
+        w.dataUris = dataUris;
+      
+        // 3) Write flex-based HTML/CSS so textarea fills all but the bottom button
+        w.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Source</title>
+        <style>
+          html, body { margin:0; padding:0; width:100%; height:100%; }
+          body { display:flex; flex-direction:column; }
+          textarea {
+            flex:1;
+            width:100%;
+            font-family: monospace;
+            padding:10px;
+            box-sizing: border-box;
+            border: none;
+            resize: none;
+          }
+          button {
+            height:45px;
+            border:none;
+            background:#007BFF;
+            color:#fff;
+            font-size:16px;
+            cursor:pointer;
+          }
+        </style>
+      </head>
+      <body>
+        <textarea id="sourceArea">${htmlEsc}</textarea>
+        <button id="saveBtn">Save</button>
+        <script>
+          document.getElementById('saveBtn').addEventListener('click', function() {
+            let val = document.getElementById('sourceArea').value;
+            const full = window.dataUris;
+            val = val.replace(/__IMG_(\\d+)__/g, (_,n) => full[+n] || '');
+            const unescaped = val.replace(/&lt;/g,'<').replace(/&gt;/g,'>');
+            const doc = window.opener.document;
+            window.opener.focus();
+            doc.execCommand('selectAll', false, null);
+            doc.execCommand('insertHTML', false, unescaped);
+            window.close();
+          });
+        <\/script>
+      </body>
+      </html>`);
+        w.document.close();
+        w.focus();
+      };
+      
+      
+      
+  
+      // --- PAGE MARGINS ---
+      window.showMarginModal = function() {
+        const cs = getComputedStyle(editor);
+        marginTop.value    = (parseFloat(cs.paddingTop)    / 96).toFixed(2);
+        marginRight.value  = (parseFloat(cs.paddingRight)  / 96).toFixed(2);
+        marginBottom.value = (parseFloat(cs.paddingBottom) / 96).toFixed(2);
+        marginLeft.value   = (parseFloat(cs.paddingLeft)   / 96).toFixed(2);
+        marginModal.style.display = 'flex';
+      };
+      marginCancel.addEventListener('click', () => marginModal.style.display = 'none');
+      marginOk.addEventListener('click', () => {
         editor.style.paddingTop    = marginTop.value    + 'in';
         editor.style.paddingRight  = marginRight.value  + 'in';
         editor.style.paddingBottom = marginBottom.value + 'in';
         editor.style.paddingLeft   = marginLeft.value   + 'in';
         marginModal.style.display  = 'none';
-      
-        // persist for next load
         localStorage.setItem('editorMargins', JSON.stringify({
-          top:    marginTop.value,
-          right:  marginRight.value,
+          top: marginTop.value,
+          right: marginRight.value,
           bottom: marginBottom.value,
-          left:   marginLeft.value
+          left: marginLeft.value
         }));
       });
-      
-
-    marginCancel.addEventListener('click', () => {
-        marginModal.style.display = 'none';
-    });
-  //-------------------------------------------------------------------------------------------------------
-  // 0) After you grab `editor` but before the uploader handler:
-
-    // Wrap any <img> already in the editor that aren’t yet in a .resizable
-    editor.querySelectorAll('img').forEach(img => {
-        if (!img.closest('.resizable')) {
-        // create wrapper
-        const wrapper = document.createElement('div');
-        wrapper.className = 'resizable';
-        wrapper.style.left = '0px';
-        wrapper.style.top  = '0px';
-        // move the image into it
-        img.parentNode.insertBefore(wrapper, img);
-        wrapper.appendChild(img);
-        // now hook up drag & clamp
-        attachDragHandle(wrapper);
+  
+      // --- WRAP EXISTING IMAGES + attach handles ---
+      (function wrapExistingImages() {
+        const parentRect = editor.getBoundingClientRect();
+        Array.from(editor.querySelectorAll('img')).forEach(img => {
+          if (img.closest('.resizable')) return;
+          const imgRect = img.getBoundingClientRect();
+          const wrapper = document.createElement('div');
+          wrapper.className = 'resizable';
+          Object.assign(wrapper.style, {
+            position:'absolute',
+            left:   (imgRect.left   - parentRect.left) + 'px',
+            top:    (imgRect.top    - parentRect.top)  + 'px',
+            width:  imgRect.width   + 'px',
+            height: imgRect.height  + 'px',
+            zIndex: '10'
+          });
+          img.parentNode.insertBefore(wrapper, img);
+          wrapper.appendChild(img);
+          attachDragHandle(wrapper);
+        });
+      })();
+  
+      // --- DRAG HANDLE LOGIC ---
+      function attachDragHandle(wrapper) {
+        if (isLocked) {
+          wrapper.style.pointerEvents = 'none';
+          const h = wrapper.querySelector('.drag-handle');
+          if (h) h.style.display = 'none';
+          return;
         }
-    });
-  
-  
-    function attachDragHandle(wrapper) {
-        // 1) find existing handle or make one
+        wrapper.style.pointerEvents = 'auto';
+        wrapper.style.position = wrapper.style.position || 'absolute';
         let handle = wrapper.querySelector('.drag-handle');
         if (!handle) {
           handle = document.createElement('div');
           handle.className = 'drag-handle';
           wrapper.appendChild(handle);
         }
-      
-        // 2) avoid adding multiple listeners
+        handle.style.display = '';
         if (handle._dragInit) return;
         handle._dragInit = true;
-      
-        // 3) wire up drag start
+  
         handle.addEventListener('mousedown', e => {
           if (e.button !== 0) return;
           e.preventDefault();
-      
           const parentRect = editor.getBoundingClientRect();
-          const rect       = wrapper.getBoundingClientRect();
+          const startRect  = wrapper.getBoundingClientRect();
           const startX     = e.clientX;
           const startY     = e.clientY;
-          const origX      = rect.left - parentRect.left;
-          const origY      = rect.top  - parentRect.top;
-      
+          const origX      = startRect.left - parentRect.left;
+          const origY      = startRect.top  - parentRect.top;
+  
           function onMouseMove(ev) {
-            const dx = ev.clientX - startX;
-            const dy = ev.clientY - startY;
-            let newX = origX + dx;
-            let newY = origY + dy;
-      
-            // clamp to editor bounds
+            let newX = origX + (ev.clientX - startX);
+            let newY = origY + (ev.clientY - startY);
             const pRect = editor.getBoundingClientRect();
             const wRect = wrapper.getBoundingClientRect();
-            newX = Math.min(Math.max(0, newX), pRect.width  - wRect.width);
-            newY = Math.min(Math.max(0, newY), pRect.height - wRect.height);
-      
+            newX = Math.max(0, Math.min(newX, pRect.width  - wRect.width));
+            newY = Math.max(0, Math.min(newY, pRect.height - wRect.height));
             wrapper.style.left = newX + 'px';
             wrapper.style.top  = newY + 'px';
           }
-      
           function onMouseUp() {
             document.removeEventListener('mousemove', onMouseMove);
             document.removeEventListener('mouseup',   onMouseUp);
           }
-      
           document.addEventListener('mousemove', onMouseMove);
           document.addEventListener('mouseup',   onMouseUp);
         });
-
+  
         const ro = new ResizeObserver(entries => {
-        for (let ent of entries) {
+          entries.forEach(ent => {
             const wRect = ent.contentRect;
-            const parentRect = editor.getBoundingClientRect();
-            // compute the element's current offset
-            const offsetLeft = ent.target.offsetLeft;
-            const offsetTop  = ent.target.offsetTop;
-            // max allowed dimensions
-            const maxW = parentRect.width  - offsetLeft;
-            const maxH = parentRect.height - offsetTop;
-    
-            // clamp width/height if needed
-            if (wRect.width  > maxW) ent.target.style.width  = maxW + 'px';
-            if (wRect.height > maxH) ent.target.style.height = maxH + 'px';
-        }
+            const pRect = editor.getBoundingClientRect();
+            const left  = ent.target.offsetLeft;
+            const top   = ent.target.offsetTop;
+            if (wRect.width  > pRect.width  - left) ent.target.style.width  = (pRect.width - left) + 'px';
+            if (wRect.height > pRect.height - top ) ent.target.style.height = (pRect.height - top)  + 'px';
+          });
         });
         ro.observe(wrapper);
-    }
-    Array.from(editor.querySelectorAll('.resizable')).forEach(attachDragHandle);
-
-    (function wrapExistingImages() {
-        // editor must be in the DOM and laid out to get correct rects
-        const parentRect = editor.getBoundingClientRect();
-        Array.from(editor.querySelectorAll('img')).forEach(img => {
-          // skip images already wrapped
-          if (img.closest('.resizable')) return;
-    
-          const imgRect = img.getBoundingClientRect();
-          const wrapper = document.createElement('div');
-          wrapper.className = 'resizable';
-    
-          // position & size the wrapper to match the img
-          wrapper.style.position = 'absolute';
-          wrapper.style.left   = (imgRect.left   - parentRect.left) + 'px';
-          wrapper.style.top    = (imgRect.top    - parentRect.top)  + 'px';
-          wrapper.style.width  = imgRect.width  + 'px';
-          wrapper.style.height = imgRect.height + 'px';
-    
-          // move the image into the wrapper
-          img.parentNode.insertBefore(wrapper, img);
-          wrapper.appendChild(img);
-        });
-        })();
-
-    // B) On file-upload, insert + then wire up the new wrapper:
-    uploader.addEventListener('change', function() {
-        const file = this.files[0];
+      }
+  
+      // --- FILE UPLOADER ---
+      imageUploader.addEventListener('change', () => {
+        const file = imageUploader.files[0];
         if (!file) return;
         const reader = new FileReader();
         reader.onload = () => {
-          exec('insertHTML',
-            `<div class="resizable" contenteditable="false" style="left:0;top:0;width:200px;height:200px;">
-               <img src="${reader.result}" />
-             </div>`
-          );
-          setTimeout(() => {
-            const wraps = editor.querySelectorAll('.resizable');
-            attachDragHandle(wraps[wraps.length - 1]);
-          }, 0);
+          const wrapper = document.createElement('div');
+          wrapper.className       = 'resizable';
+          wrapper.contentEditable = 'false';
+          Object.assign(wrapper.style, {
+            position:'absolute', left:'0px', top:'0px',
+            width:'200px', height:'200px', zIndex:'10'
+          });
+          const img = document.createElement('img');
+          img.src = reader.result;
+          wrapper.appendChild(img);
+          const sel = window.getSelection();
+          if (sel.rangeCount) sel.getRangeAt(0).insertNode(wrapper);
+          else editor.appendChild(wrapper);
+          attachDragHandle(wrapper);
         };
         reader.readAsDataURL(file);
-        this.value = '';
+        imageUploader.value = '';
       });
 
+      // --- IMAGE IN FRONT OR BEHIND TEXT ---
+      window.setImageZIndex = function(mode) {
+        const wrapper = document.querySelector('.resizable.selected');
+        if (!wrapper) return;
+        // “front” = on top, “back” = behind
+        wrapper.style.zIndex = mode === 'front' ? '10' : '-1';
+      };
+      
+      
+      
+      
   
-  
-  
-  //-------------------------------------------------------------------------------------------------------
-
-  // Spacing menu handler
-  spacingMenu.addEventListener('change', () => {
-    switch (spacingMenu.value) {
-      case 'ls-1':     setLineSpacing('1');     break;
-      case 'ls-1.15':  setLineSpacing('1.15');  break;
-      case 'ls-1.5':   setLineSpacing('1.5');   break;
-      case 'ls-2':     setLineSpacing('2');     break;
-      case 'pb-toggle': toggleSpacingBefore();  break;
-      case 'pa-toggle': toggleSpacingAfter();   break;
-    }
-    // Reset dropdown to default
-    spacingMenu.value = '';
-  });
-
-  // Ctrl+Click on a link opens it in a new tab
-  editor.addEventListener('click', e => {
-    const a = e.target.closest('a');
-    if (a && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      window.open(a.href, '_blank');
-    }
-  });
-    //-------------------------------------------------------------------------------------------------------
-
-
-  // Keydown: Tab/Shift+Tab for indent, Backspace in lists, and Ctrl shortcuts
-  document.addEventListener('keydown', e => {
-    if (document.activeElement !== editor) return;
-
-    // inside document.addEventListener('keydown', e => { …
-    if ((e.key === 'Backspace' || e.key === 'Delete') && document.activeElement === editor) {
+      // --- SPACING MENU ---
+      spacingMenu.addEventListener('change', () => {
+        switch (spacingMenu.value) {
+          case 'ls-1':      setLineSpacing('1');    break;
+          case 'ls-1.15':   setLineSpacing('1.15'); break;
+          case 'ls-1.5':    setLineSpacing('1.5');  break;
+          case 'ls-2':      setLineSpacing('2');    break;
+          case 'pb-toggle': toggleSpacingBefore();  break;
+          case 'pa-toggle': toggleSpacingAfter();   break;
+        }
+        spacingMenu.value = '';
+      });
+      function getClosestBlock() {
         const sel = window.getSelection();
-        if (sel.isCollapsed && sel.rangeCount) {
-        const range = sel.getRangeAt(0);
-        // get the element under the caret
-        let node = range.startContainer;
+        if (!sel.rangeCount) return null;
+        let node = sel.anchorNode;
         if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
-        const wrapper = node.closest('.resizable');
-        if (wrapper) {
-            e.preventDefault();
-
-            // select the entire .resizable wrapper
-            const delRange = document.createRange();
-            delRange.selectNode(wrapper);
-            const sel = window.getSelection();
-            sel.removeAllRanges();
-            sel.addRange(delRange);
-
-            // delete it via execCommand (undoable)
-            exec('insertHTML', '');
-            return;
-        }
-        }
-    }
+        return node.closest('p, li, td, th');
+      }
+      function setLineSpacing(v) {
+        const b = getClosestBlock();
+        if (b) b.style.lineHeight = v;
+      }
+      function toggleSpacingBefore() {
+        const b = getClosestBlock();
+        if (!b) return;
+        const p = ['TD','TH'].includes(b.tagName) ? 'paddingTop' : 'marginTop';
+        const c = parseFloat(getComputedStyle(b)[p]) || 0;
+        b.style[p] = (c>0?0:8) + 'px';
+      }
+      function toggleSpacingAfter() {
+        const b = getClosestBlock();
+        if (!b) return;
+        const p = ['TD','TH'].includes(b.tagName) ? 'paddingBottom' : 'marginBottom';
+        const c = parseFloat(getComputedStyle(b)[p]) || 0;
+        b.style[p] = (c>0?0:8) + 'px';
+      }
   
-  //-------------------------------------------------------------------------------------------------------
-
-    // Helper to find nearest <li> for list-level indent/outdent
-    const getLI = () => {
-      const s = window.getSelection();
-      if (!s.rangeCount) return null;
-      const n = s.anchorNode;
-      return (n.nodeType === 3 ? n.parentElement : n).closest('li');
-    };
-
-    // Tab and Shift+Tab
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      const li = getLI();
-      if (e.shiftKey)        exec('outdent');
-      else if (li)           exec('indent');
-      else                   exec('insertHTML', '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;');
-      return;
-    }
-  //-------------------------------------------------------------------------------------------------------
-
-    // Backspace at start of a list item → outdent instead of delete
-    if (e.key === 'Backspace') {
-      const s = window.getSelection();
-      if (s.isCollapsed && s.rangeCount) {
-        const r = s.getRangeAt(0);
-        if (r.startOffset === 0 && getLI()) {
+      // --- CTRL+CLICK OPEN LINK ---
+      editor.addEventListener('click', e => {
+        const a = e.target.closest('a');
+        if (a && (e.ctrlKey||e.metaKey)) {
           e.preventDefault();
-          exec('outdent');
+          window.open(a.href,'_blank');
+        }
+      });
+  
+      // --- KEYDOWN HANDLING ---
+      document.addEventListener('keydown', e => {
+        if (document.activeElement !== editor) return;
+  
+        // delete wrapper on backspace/delete
+        if (['Backspace','Delete'].includes(e.key)) {
+          const sel = window.getSelection();
+          if (sel.isCollapsed && sel.rangeCount) {
+            let n = sel.anchorNode;
+            if (n.nodeType===Node.TEXT_NODE) n = n.parentElement;
+            const w = n.closest('.resizable');
+            if (w) {
+              e.preventDefault();
+              const r = document.createRange();
+              r.selectNode(w);
+              sel.removeAllRanges();
+              sel.addRange(r);
+              exec('insertHTML','');
+              return;
+            }
+          }
+        }
+  
+        // Tab indent/outdent
+        if (e.key==='Tab') {
+          e.preventDefault();
+          const li = getClosestBlock();
+          if (e.shiftKey) exec('outdent');
+          else if (li) exec('indent');
+          else exec('insertHTML','&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;');
           return;
         }
-      }
-    }
-  //-------------------------------------------------------------------------------------------------------
-
-    // Ctrl/Cmd shortcuts (e.g. Ctrl+B, Ctrl+Z, etc.)
-    if (e.ctrlKey || e.metaKey) {
-      switch (e.key.toLowerCase()) {
-        case 'b': e.preventDefault(); exec('bold');      break;
-        case 'i': e.preventDefault(); exec('italic');    break;
-        case 'u': e.preventDefault(); exec('underline'); break;
-        case 'z': e.preventDefault(); exec('undo');      break;
-        case 'y': e.preventDefault(); exec('redo');      break;
-        case 'p': e.preventDefault(); printContent();    break;
-      }
-    }
-  });
-  //-------------------------------------------------------------------------------------------------------
-
-  // Auto-link plain URLs when typing space or Enter
-  editor.addEventListener('keyup', e => {
-    if (e.key === ' ' || e.key === 'Enter') {
-      const urlReg = /(https?:\/\/[^\s]+)/g;
-      const s = window.getSelection();
-      const n = s.anchorNode;
-      if (!n || n.nodeType !== Node.TEXT_NODE) return;
-
-      const m = urlReg.exec(n.textContent);
-      if (!m) return;
-
-      const u = m[0];
-      const range = document.createRange();
-      range.setStart(n, m.index);
-      range.setEnd(n, m.index + u.length);
-      s.removeAllRanges();
-      s.addRange(range);
-
-      exec('createLink', u);
-
-      const a = s.anchorNode.closest
-        ? s.anchorNode.closest('a')
-        : s.anchorNode.parentElement;
-      if (a && a.tagName === 'A') {
-        a.setAttribute('target', '_blank');
-      }
-      s.collapseToEnd();
-    }
-  });
-});
+  
+        // backspace at start of list → outdent
+        if (e.key==='Backspace') {
+          const sel = window.getSelection();
+          if (sel.isCollapsed && sel.rangeCount) {
+            const r = sel.getRangeAt(0);
+            if (r.startOffset===0 && getClosestBlock()?.tagName==='LI') {
+              e.preventDefault();
+              exec('outdent');
+              return;
+            }
+          }
+        }
+  
+        // ctrl shortcuts
+        if (e.ctrlKey||e.metaKey) {
+          switch (e.key.toLowerCase()) {
+            case 'b': e.preventDefault(); exec('bold');      break;
+            case 'i': e.preventDefault(); exec('italic');    break;
+            case 'u': e.preventDefault(); exec('underline'); break;
+            case 'z': e.preventDefault(); exec('undo');      break;
+            case 'y': e.preventDefault(); exec('redo');      break;
+            case 'p': e.preventDefault(); printContent();    break;
+          }
+        }
+      });
+  
+      // --- KEYUP AUTOLINK ---
+      editor.addEventListener('keyup', e => {
+        if (e.key!==' ' && e.key!=='Enter') return;
+        const reg = /(https?:\/\/[^\s]+)/g;
+        const sel = window.getSelection();
+        const n   = sel.anchorNode;
+        if (!n || n.nodeType!==Node.TEXT_NODE) return;
+        const m = reg.exec(n.textContent);
+        if (!m) return;
+        const u = m[0];
+        const r = document.createRange();
+        r.setStart(n, m.index);
+        r.setEnd(n, m.index+u.length);
+        sel.removeAllRanges();
+        sel.addRange(r);
+        exec('createLink', u);
+        const a = sel.anchorNode.closest ? sel.anchorNode.closest('a') : sel.anchorNode.parentElement;
+        if (a && a.tagName==='A') a.setAttribute('target','_blank');
+        sel.collapseToEnd();
+      });
+  
+    });
+  })();
+  
