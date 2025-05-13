@@ -10,35 +10,37 @@
     window.exec = exec;
   
     document.addEventListener('DOMContentLoaded', () => {
-      // grab all relevant nodes once
-      const editor        = document.getElementById('editor');
-      const toolbar       = document.getElementById('toolbar');
-      const toggleLockBtn = document.getElementById('toggleLockBtn');
-      const globalPrintBtn= document.getElementById('globalPrintBtn');
-  
-      const linkModal     = document.getElementById('linkModal');
-      const linkText      = document.getElementById('linkText');
-      const linkURL       = document.getElementById('linkURL');
-      const linkOk        = document.getElementById('linkOk');
-      const linkCancel    = document.getElementById('linkCancel');
-  
-      const marginModal   = document.getElementById('marginModal');
-      const marginTop     = document.getElementById('marginTop');
-      const marginRight   = document.getElementById('marginRight');
-      const marginBottom  = document.getElementById('marginBottom');
-      const marginLeft    = document.getElementById('marginLeft');
-      const marginOk      = document.getElementById('marginOk');
-      const marginCancel  = document.getElementById('marginCancel');
-  
-      const imageUploader = document.getElementById('imageUploader');
-      const spacingMenu   = document.getElementById('spacingMenu');
-  
-      // expose editor globally
-      window.editor = editor;
+        // grab all relevant nodes once
+        const editor        = document.getElementById('editor');
+        const toolbar       = document.getElementById('toolbar');
+        const toggleLockBtn = document.getElementById('toggleLockBtn');
+    
+        const linkModal     = document.getElementById('linkModal');
+        const linkText      = document.getElementById('linkText');
+        const linkURL       = document.getElementById('linkURL');
+        const linkOk        = document.getElementById('linkOk');
+        const linkCancel    = document.getElementById('linkCancel');
+    
+        const marginModal   = document.getElementById('marginModal');
+        const marginTop     = document.getElementById('marginTop');
+        const marginRight   = document.getElementById('marginRight');
+        const marginBottom  = document.getElementById('marginBottom');
+        const marginLeft    = document.getElementById('marginLeft');
+        const marginOk      = document.getElementById('marginOk');
+        const marginCancel  = document.getElementById('marginCancel');
+    
+        const imageUploader = document.getElementById('imageUploader');
+        const spacingMenu   = document.getElementById('spacingMenu');
+
+        const pickBtn = document.getElementById('pickBehind');
+    
+        // expose editor globally
+        window.editor = editor;
 
 
-      let isLocked = true;
-      let selectedWrapper = null;
+        let isLocked = true;
+        let pickMode = false;
+        let selectedWrapper = null;
     
 
         // select wrappers on click instead of mousedown
@@ -56,67 +58,69 @@
             }
         });
   
-      
-
-
-      
-  
-      // restore saved content
-      const saved = localStorage.getItem('editorContent');
-      if (saved) editor.innerHTML = saved;
-  
-      // auto-save on input
-      editor.addEventListener('input', () => {
-        localStorage.setItem('editorContent', editor.innerHTML);
-      });
-  
-      // persist inline style changes
-      const styleObserver = new MutationObserver(() => {
-        localStorage.setItem('editorContent', editor.innerHTML);
-      });
-      styleObserver.observe(editor, {
-        subtree: true,
-        attributes: true,
-        attributeFilter: ['style']
-      });
-  
-      // restore saved margins
-      const savedM = localStorage.getItem('editorMargins');
-      if (savedM) {
-        const m = JSON.parse(savedM);
-        editor.style.paddingTop    = m.top    + 'in';
-        editor.style.paddingRight  = m.right  + 'in';
-        editor.style.paddingBottom = m.bottom + 'in';
-        editor.style.paddingLeft   = m.left   + 'in';
-      }
-  
-      // lock/unlock editing
-      editor.style.position      = 'relative';
-      editor.contentEditable     = 'false';
-      editor.style.border        = '1px solid #ccc';
-      toolbar.style.display      = 'none';
-      toggleLockBtn.textContent  = '🔓 Unlock Editing';
-      toggleLockBtn.addEventListener('click', () => {
-        isLocked = !isLocked;
-      
-        // as soon as we lock, clear any blue highlight
-        if (isLocked) {
-          document
-            .querySelectorAll('.resizable.selected')
-            .forEach(w => w.classList.remove('selected'));
-          selectedWrapper = null;
+        // restore saved content
+        const saved = localStorage.getItem('editorContent');
+        if (saved) editor.innerHTML = saved;
+    
+        // auto-save on input
+        editor.addEventListener('input', () => {
+            localStorage.setItem('editorContent', editor.innerHTML);
+        });
+    
+        // persist inline style changes
+        const styleObserver = new MutationObserver(() => {
+            localStorage.setItem('editorContent', editor.innerHTML);
+        });
+        styleObserver.observe(editor, {
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['style']
+        });
+    
+        // restore saved margins
+        const savedM = localStorage.getItem('editorMargins');
+        if (savedM) {
+            const m = JSON.parse(savedM);
+            editor.style.paddingTop    = m.top    + 'in';
+            editor.style.paddingRight  = m.right  + 'in';
+            editor.style.paddingBottom = m.bottom + 'in';
+            editor.style.paddingLeft   = m.left   + 'in';
         }
-      
-        editor.contentEditable = (!isLocked).toString();
-        toolbar.style.display  = isLocked ? 'none' : '';
-        editor.style.border    = isLocked ? '1px solid #ccc' : '3px solid #888';
-        toggleLockBtn.textContent = isLocked
-          ? '🔓 Unlock Editing'
-          : '🔒 Lock Editing';
-      
-        // re-attach or disable drag handles as needed
-        document.querySelectorAll('.resizable').forEach(w => attachDragHandle(w));
-      });
+
+        // clear any leftover selection on load
+        document
+        .querySelectorAll('.resizable.selected')
+        .forEach(w => w.classList.remove('selected'));
+        selectedWrapper = null;
+    
+        // lock/unlock editing
+        editor.style.position      = 'relative';
+        editor.contentEditable     = 'false';
+        editor.style.border        = '1px solid #ccc';
+        toolbar.style.display      = 'none';
+        toggleLockBtn.textContent  = '🔓 Unlock Editing';
+
+        toggleLockBtn.addEventListener('click', () => {
+            isLocked = !isLocked;
+        
+            // as soon as we lock, clear any blue highlight
+            if (isLocked) {
+            document
+                .querySelectorAll('.resizable.selected')
+                .forEach(w => w.classList.remove('selected'));
+            selectedWrapper = null;
+            }
+        
+            editor.contentEditable = (!isLocked).toString();
+            toolbar.style.display  = isLocked ? 'none' : '';
+            editor.style.border    = isLocked ? '1px solid #ccc' : '3px solid #888';
+            toggleLockBtn.textContent = isLocked
+            ? '🔓 Unlock Editing'
+            : '🔒 Lock Editing';
+        
+            // re-attach or disable drag handles as needed
+            document.querySelectorAll('.resizable').forEach(w => attachDragHandle(w));
+        });
       
   
       // --- LINK PROMPT ---
@@ -221,80 +225,72 @@
   
       // --- PRINT CONTENT ---
       window.printContent = function() {
-        const placeholderMap = { Option1: 'discountedAmountA' };
-        const originalHTML   = editor.innerHTML;
-      
-        // 1) swap placeholders
-        let html = originalHTML;
-        for (const key in placeholderMap) {
-          const span = document.getElementById(placeholderMap[key]);
-          html = html.replace(
-            new RegExp(`\\[${key}\\]`, 'g'),
-            span ? span.textContent : ''
-          );
-        }
-        editor.innerHTML = html;
-      
-        // 2) inject updated print styles
-        const style = document.createElement('style');
-        style.id = 'print-styles';
-        style.textContent = `
-        @page { margin: 0; }
-        @media print {
-          html, body { margin:0; padding:0; }
-      
-          /* force highlights & bg-colors to show */
-          #editor,
-          #editor * {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-      
-          /* hide everything but the editor */
-          body > *:not(#editor) { display: none !important; }
-      
-          #editor {
-            position: relative !important;
-            margin: 0 !important;
-            padding: 0.5in 1in 1in 1in !important;
-            border: none !important;
-            box-shadow: none !important;
-          }
-          #editor::before,
-          #editor::after { content: none !important; }
-      
-          .resizable {
-            position: absolute !important;
-            display: block !important;
-            overflow: visible !important;
-            border: none !important;
-            box-shadow: none !important;
-          }
-          .resizable img {
-            display: block !important;
-            width: 100% !important;
-            height: 100% !important;
-            object-fit: fill !important;
-          }
-          .resizable .drag-handle { display: none !important; }
-        }
-      `;
-      
-        document.head.appendChild(style);
-      
-        // 3) print & cleanup
-        window.print();
-        window.onafterprint = () => {
-          document.head.removeChild(style);
-          editor.innerHTML = originalHTML;
-          window.onafterprint = null;
-        };
+            const original = editor;
+            const clone    = original.cloneNode(true);
+            clone.id = 'editor-print';
+            
+            const discount = document.getElementById('discountedAmountA').textContent;
+            clone.innerHTML = clone.innerHTML.replace(/\[Option1\]/g, discount);
+
+            // insert clone & hide the real editor
+            original.parentNode.insertBefore(clone, original.nextSibling);
+            original.style.display = 'none';
+        
+            const style = document.createElement('style');
+            style.id = 'print-styles';
+            style.textContent = `
+            @page { margin: 0; }
+            @media print {
+                html, body { margin:0!important; padding:0!important; }
+        
+                /* force colors */
+                #editor-print, #editor-print * {
+                -webkit-print-color-adjust: exact!important;
+                print-color-adjust: exact!important;
+                }
+        
+                /* hide everything but the clone */
+                body > *:not(#editor-print) { display: none!important; }
+        
+                /* allow the clone’s inline padding to show */
+                #editor-print {
+                position: relative!important;
+                margin: 0!important;
+                /* ✂️ removed padding:0!important; */
+                border: none!important;
+                box-shadow: none!important;
+                width: auto!important;
+                overflow: visible!important;
+                }
+        
+                /* preserve your .resizable/image styling */
+                #editor-print .resizable {
+                position: absolute!important;
+                display: block!important;
+                overflow: visible!important;
+                border: none!important;
+                box-shadow: none!important;
+                }
+                #editor-print .resizable img {
+                display: block!important;
+                width: 100%!important;
+                height: 100%!important;
+                object-fit: fill!important;
+                }
+                #editor-print .resizable .drag-handle { display: none!important; }
+            }
+            `;
+            document.head.appendChild(style);
+        
+            window.print();
+        
+            // clean up immediately
+            document.head.removeChild(style);
+            clone.remove();
+            original.style.display = '';
       };
-      
-      
-      
-      
-      
+            
+
   
       // --- VIEW SOURCE ---
       window.viewSource = function() {
@@ -501,62 +497,155 @@
 
       // --- IMAGE IN FRONT OR BEHIND TEXT ---
       window.setImageZIndex = function(mode) {
-        const wrapper = document.querySelector('.resizable.selected');
-        if (!wrapper) return;
-        // “front” = on top, “back” = behind
-        wrapper.style.zIndex = mode === 'front' ? '10' : '-1';
+        const w = document.querySelector('.resizable.selected');
+        if (!w) return;
+        w.classList.remove('front','back');
+        w.classList.add(mode === 'front' ? 'front' : 'back');
       };
       
-      
-      
-      
   
-      // --- SPACING MENU ---
-      spacingMenu.addEventListener('change', () => {
-        switch (spacingMenu.value) {
-          case 'ls-1':      setLineSpacing('1');    break;
-          case 'ls-1.15':   setLineSpacing('1.15'); break;
-          case 'ls-1.5':    setLineSpacing('1.5');  break;
-          case 'ls-2':      setLineSpacing('2');    break;
-          case 'pb-toggle': toggleSpacingBefore();  break;
-          case 'pa-toggle': toggleSpacingAfter();   break;
+        // --- SPACING MENU ---
+        spacingMenu.addEventListener('change', () => {
+            switch (spacingMenu.value) {
+            case 'ls-1':      setLineSpacing('1');    break;
+            case 'ls-1.15':   setLineSpacing('1.15'); break;
+            case 'ls-1.5':    setLineSpacing('1.5');  break;
+            case 'ls-2':      setLineSpacing('2');    break;
+            case 'pb-toggle': toggleSpacingBefore();  break;
+            case 'pa-toggle': toggleSpacingAfter();   break;
+            }
+            spacingMenu.value = '';
+        });
+        function getClosestBlock() {
+            const sel = window.getSelection();
+            if (!sel.rangeCount) return null;
+            let node = sel.anchorNode;
+            if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
+            return node.closest('p, li, td, th');
         }
-        spacingMenu.value = '';
-      });
-      function getClosestBlock() {
-        const sel = window.getSelection();
-        if (!sel.rangeCount) return null;
-        let node = sel.anchorNode;
-        if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
-        return node.closest('p, li, td, th');
-      }
-      function setLineSpacing(v) {
-        const b = getClosestBlock();
-        if (b) b.style.lineHeight = v;
-      }
-      function toggleSpacingBefore() {
-        const b = getClosestBlock();
-        if (!b) return;
-        const p = ['TD','TH'].includes(b.tagName) ? 'paddingTop' : 'marginTop';
-        const c = parseFloat(getComputedStyle(b)[p]) || 0;
-        b.style[p] = (c>0?0:8) + 'px';
-      }
-      function toggleSpacingAfter() {
-        const b = getClosestBlock();
-        if (!b) return;
-        const p = ['TD','TH'].includes(b.tagName) ? 'paddingBottom' : 'marginBottom';
-        const c = parseFloat(getComputedStyle(b)[p]) || 0;
-        b.style[p] = (c>0?0:8) + 'px';
-      }
+        function setLineSpacing(v) {
+            const b = getClosestBlock();
+            if (b) b.style.lineHeight = v;
+        }
+        function toggleSpacingBefore() {
+            const b = getClosestBlock();
+            if (!b) return;
+            const p = ['TD','TH'].includes(b.tagName) ? 'paddingTop' : 'marginTop';
+            const c = parseFloat(getComputedStyle(b)[p]) || 0;
+            b.style[p] = (c>0?0:8) + 'px';
+        }
+        function toggleSpacingAfter() {
+            const b = getClosestBlock();
+            if (!b) return;
+            const p = ['TD','TH'].includes(b.tagName) ? 'paddingBottom' : 'marginBottom';
+            const c = parseFloat(getComputedStyle(b)[p]) || 0;
+            b.style[p] = (c>0?0:8) + 'px';
+        }
   
-      // --- CTRL+CLICK OPEN LINK ---
-      editor.addEventListener('click', e => {
-        const a = e.target.closest('a');
-        if (a && (e.ctrlKey||e.metaKey)) {
-          e.preventDefault();
-          window.open(a.href,'_blank');
-        }
-      });
+
+        // 1) Ctrl/Cmd+click to pick hidden images
+        editor.addEventListener('click', e => {
+            if (!(e.ctrlKey||e.metaKey)) return;
+            if (e.target.closest('.resizable')) return;
+            const {clientX:x, clientY:y} = e;
+            for (let w of editor.querySelectorAll('.resizable.back')) {
+            const r = w.getBoundingClientRect();
+            if (x>=r.left && x<=r.right && y>=r.top && y<=r.bottom) {
+                document.querySelectorAll('.resizable.selected')
+                        .forEach(n => n.classList.remove('selected'));
+                w.classList.add('selected');
+                window.selectedWrapper = w;
+                e.preventDefault();
+                e.stopImmediatePropagation();  // so the link-handler won’t run
+                return;
+            }
+            }
+        });
+        
+        // 2) Ctrl+click open-link (runs only if not handled above)
+        editor.addEventListener('click', e => {
+            if (e.defaultPrevented) return;
+            const a = e.target.closest('a');
+            if (a && (e.ctrlKey||e.metaKey)) {
+            e.preventDefault();
+            window.open(a.href, '_blank');
+            }
+        });
+        
+        // 3) 🔍 button → one-shot pick-behind mode
+        // one-shot pick mode toggle
+        pickBtn.addEventListener('click', () => {
+            pickMode = true;
+            pickBtn.classList.add('active');
+            pickBtn.textContent = '🖱️…';
+        });
+        
+        // pick or ctrl-click to select hidden image
+        editor.addEventListener('mousedown', e => {
+            if (!(e.ctrlKey || pickMode)) return;
+            const wasPick = pickMode;
+            pickMode = false;
+            if (wasPick) {
+            pickBtn.classList.remove('active');
+            pickBtn.textContent = '🔍';
+            }
+        
+            const { clientX: x, clientY: y } = e;
+            const els = document.elementsFromPoint(x, y);
+            const wrapper = els.find(el =>
+            el.classList?.contains('resizable') &&
+            el.classList.contains('back')
+            );
+            if (wrapper) {
+            document.querySelectorAll('.resizable.selected')
+                    .forEach(w => w.classList.remove('selected'));
+            wrapper.classList.add('selected');
+            window.selectedWrapper = wrapper;
+            e.preventDefault();
+            }
+        });
+
+        editor.addEventListener('click', e => {
+            if (isLocked) return;
+            if (!e.target.closest('.resizable') && selectedWrapper) {
+              selectedWrapper.classList.remove('selected');
+              selectedWrapper = null;
+            }
+        });
+          
+  
+
+        editor.addEventListener('mousedown', e => {
+            if (!pickMode) return;
+            pickMode = false;
+            pickBtn.classList.remove('active');
+            const x = e.clientX, y = e.clientY;
+            for (let w of editor.querySelectorAll('.resizable.back')) {
+            const r = w.getBoundingClientRect();
+            if (x>=r.left && x<=r.right && y>=r.top && y<=r.bottom) {
+                document.querySelectorAll('.resizable.selected')
+                        .forEach(n => n.classList.remove('selected'));
+                w.classList.add('selected');
+                window.selectedWrapper = w;
+                e.preventDefault();
+                break;
+            }
+            }
+        });
+
+          
+
+        // 2) Ctrl+click open link  
+        editor.addEventListener('click', e => {
+            if (e.defaultPrevented) return;   // skip if pick-behind already ran
+            const a = e.target.closest('a');
+            if (a && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            window.open(a.href, '_blank');
+            }
+        });
+  
+  
   
       // --- KEYDOWN HANDLING ---
       document.addEventListener('keydown', e => {
