@@ -41,8 +41,17 @@ body { font-family: sans-serif; margin: 20px; }
   border: 1px solid #888;  /* faint page border */
   position: relative;
   overflow: hidden;        /* hide anything beyond the page */
+  background: transparent;
+  position: relative; /* keep for stacking */
+}
+
+#editor::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
   background: white;
-  position: relative;  /* now child .resizable can be absolutely placed */
+  z-index: -2;
+  pointer-events: none;
 }
 
 /* optional: show a dashed “printable area” edge at bottom of margin */
@@ -119,6 +128,10 @@ td, th {
   padding: 0;
   box-sizing: border-box;
 }
+.resizable.front { z-index: 10 !important; }
+.resizable.back  { z-index: -1 !important; }
+
+
 
 /* Drag handle in the top-right corner */
 .resizable .drag-handle {
@@ -142,7 +155,9 @@ td, th {
   user-select: none;
   pointer-events: none;
 }
-
+.resizable.selected {
+  border: 2px solid #007BFF !important;
+}
 
   </style>
 </head>
@@ -235,6 +250,17 @@ td, th {
   accept="image/*"
   style="display:none;"
 />
+<button
+  type="button"
+  onmousedown="event.preventDefault()"
+  onclick="setImageZIndex('front')"
+  title="Bring image in front">⬆️</button>
+
+<button
+  type="button"
+  onmousedown="event.preventDefault()"
+  onclick="setImageZIndex('back')"
+  title="Send image behind text">⬇️</button>
 <button
   type="button"                       
   onmousedown="event.preventDefault()"
