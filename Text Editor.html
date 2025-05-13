@@ -19,145 +19,147 @@
     type="text/css"
   />
   <style>
-body { font-family: sans-serif; margin: 20px; }
-#toolbar {
-  border: 1px solid #ccc;
-  padding: 8px;
-  background: #f5f5f5;
-  margin-bottom: 5px;
-}
-#toolbar button,
-#toolbar select,
-#toolbar input[type="color"] {
-  margin-right: 5px;
-}
-/* make the editor exactly one letter-size page */
-#editor {
-  margin:0 auto;
-  width: 8.5in;            /* page width */
-  height: 11in;            /* page height */
-  padding: .5in;            /* 1" margin */
-  box-sizing: border-box;  
-  border: 1px solid #888;  /* faint page border */
-  position: relative;
-  overflow: hidden;        /* hide anything beyond the page */
-  background: transparent;
-  position: relative; /* keep for stacking */
-}
+    body { font-family: sans-serif; margin: 20px; }
+    #toolbar {
+      border: 1px solid #ccc;
+      padding: 8px;
+      background: #f5f5f5;
+      margin-bottom: 5px;
+    }
+    #toolbar button,
+    #toolbar select,
+    #toolbar input[type="color"] {
+      margin-right: 5px;
+    }
+    /* make the editor exactly one letter-size page */
+    #editor {
+      margin:0 auto;
+      width: 8.5in;            /* page width */
+      height: 11in;            /* page height */
+      padding: .5in;            /* 1" margin */
+      box-sizing: border-box;  
+      border: 1px solid #888;  /* faint page border */
+      position: relative;
+      overflow: hidden;        /* hide anything beyond the page */
+      background: transparent;
+      position: relative; /* keep for stacking */
+    }
 
-#editor::before {
-  content: "";
-  position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: white;
-  z-index: -2;
-  pointer-events: none;
-}
+    #editor::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: white;
+      z-index: -2;
+      pointer-events: none;
+    }
 
-/* optional: show a dashed “printable area” edge at bottom of margin */
-#editor::after {
-  content: '';
-  position: absolute;
-  bottom: 1in;             /* at bottom of content area */
-  left: 0;
-  width: 100%;
-  border-top: 1px dashed #ccc;
-}
+    /* optional: show a dashed “printable area” edge at bottom of margin */
+    #editor::after {
+      content: '';
+      position: absolute;
+      bottom: 1in;             /* at bottom of content area */
+      left: 0;
+      width: 100%;
+      border-top: 1px dashed #ccc;
+    }
 
-table {
-  border-collapse: collapse;
-  margin: 5px 0;
-}
-td, th {
-  border: 1px solid #000;
-  padding: 4px;
-}
+    table {
+      border-collapse: collapse;
+      margin: 5px 0;
+    }
+    td, th {
+      border: 1px solid #000;
+      padding: 4px;
+    }
 
-/* Modal styles */
-#linkModal {
-  display: none;               /* hidden by default */
-  position: fixed;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
-  background: rgba(0,0,0,0.5);
-  align-items: center;
-  justify-content: center;
-  /* when JS does style.display = 'flex', this becomes a flex container */
-}
-#linkModal > div {
-  background: #fff;
-  padding: 20px;
-  border-radius: 4px;
-  max-width: 300px;
-  width: 100%;
-  box-sizing: border-box;
-}
-#linkModal input {
-  width: 100%;
-  margin-bottom: 10px;
-}
-#linkModal button {
-  margin-right: 5px;
-}
+    /* Modal styles */
+    #linkModal {
+      display: none;               /* hidden by default */
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5);
+      align-items: center;
+      justify-content: center;
+      /* when JS does style.display = 'flex', this becomes a flex container */
+    }
+    #linkModal > div {
+      background: #fff;
+      padding: 20px;
+      border-radius: 4px;
+      max-width: 300px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    #linkModal input {
+      width: 100%;
+      margin-bottom: 10px;
+    }
+    #linkModal button {
+      margin-right: 5px;
+    }
 
-#marginModal {
-  display: none;
-  position: fixed;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
-  background: rgba(0,0,0,0.5);
-  align-items: center;
-  justify-content: center;
-}
-#marginModal > div {
-  background: #fff;
-  padding: 20px;
-  border-radius: 4px;
-  max-width: 320px;
-  width: 100%;
-  box-sizing: border-box;
-}
+    #marginModal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5);
+      align-items: center;
+      justify-content: center;
+    }
+    #marginModal > div {
+      background: #fff;
+      padding: 20px;
+      border-radius: 4px;
+      max-width: 320px;
+      width: 100%;
+      box-sizing: border-box;
+    }
 
-/* Unified resizable wrapper */
-.resizable {
-  position: absolute;
-  display: inline-block;
-  resize: both;
-  overflow: hidden;
-  border: 1px dashed #ccc;
-  padding: 0;
-  box-sizing: border-box;
-}
-.resizable.front { z-index: 10 !important; }
-.resizable.back  { z-index: -1 !important; }
+    /* Unified resizable wrapper */
+    .resizable {
+      position: absolute;
+      display: inline-block;
+      resize: both;
+      overflow: hidden;
+      border: 1px dashed #ccc;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    .resizable.front { z-index: 10 !important; }
+    .resizable.back  { z-index: -1 !important; }
 
+    /* Drag handle in the top-right corner */
+    .resizable .drag-handle {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 16px;
+      height: 16px;
+      cursor: move;
+      z-index: 1000;
+      pointer-events: auto;
+      background: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%208%208'%3E%3Cpath%20d='M0%208%20L8%200%20M4%208%20L8%204%20M0%204%20L4%200'%20stroke='%23888'%20stroke-width='1'/%3E%3C/svg%3E") no-repeat center;
+    }
 
-
-/* Drag handle in the top-right corner */
-.resizable .drag-handle {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 16px;
-  height: 16px;
-  cursor: move;
-  z-index: 1000;
-  pointer-events: auto;
-  background: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%208%208'%3E%3Cpath%20d='M0%208%20L8%200%20M4%208%20L8%204%20M0%204%20L4%200'%20stroke='%23888'%20stroke-width='1'/%3E%3C/svg%3E") no-repeat center;
-}
-
-/* Ensure the image fills its wrapper and doesn’t intercept clicks */
-.resizable img {
-  width: 100%;
-  height: 100%;
-  object-fit: fill;
-  display: block;
-  user-select: none;
-  pointer-events: none;
-}
-.resizable.selected {
-  border: 2px solid #007BFF !important;
-}
+    /* Ensure the image fills its wrapper and doesn’t intercept clicks */
+    .resizable img {
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+      display: block;
+      user-select: none;
+      pointer-events: none;
+    }
+    .resizable.selected {
+      z-index: 1000 !important;
+      border: 2px solid #007BFF !important;
+    }
+    .resizable.back.selected {
+      z-index: 1000 !important;
+    }
 
   </style>
 </head>
@@ -261,6 +263,13 @@ td, th {
   onmousedown="event.preventDefault()"
   onclick="setImageZIndex('back')"
   title="Send image behind text">⬇️</button>
+<button
+id="pickBehind"
+type="button"
+onmousedown="event.preventDefault()"
+title="Select hidden image (Ctrl + click)"
+>🔍</button>
+
 <button
   type="button"                       
   onmousedown="event.preventDefault()"
