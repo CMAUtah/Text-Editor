@@ -25,6 +25,9 @@
       padding: 8px;
       background: #f5f5f5;
       margin-bottom: 5px;
+      flex-wrap: wrap;
+      display: flex;
+      gap: 5px;
     }
     #toolbar button,
     #toolbar select,
@@ -167,6 +170,7 @@
   <span id="discountedAmountA">Tacotime</span>
   <button id="globalPrintBtn" type="button" onclick="printContent()" 
   title="Print">🖨️ Print</button>
+  <button onclick="downloadAsPDF()" title="Download as PDF">📄 PDF</button>
   <!-- Editor locker -->
   <button id="toggleLockBtn" type="button" onmousedown="event.preventDefault()" 
   title="Lock or unlock editing">Lock Editing</button>
@@ -279,11 +283,10 @@ title="Select hidden image (Ctrl + click)"
 
     <button onmousedown="event.preventDefault()"
             onclick="tablePrompt()" title="Insert table">📊 Table</button>
-
     <button onmousedown="event.preventDefault()"
-            onclick="exec('undo')" title="Undo (Ctrl + Z)">↺</button>
+            onclick="handleUndo()" title="Undo (Ctrl + Z)">↺</button>
     <button onmousedown="event.preventDefault()"
-            onclick="exec('redo')" title="Redo (Ctrl + Y)">↻</button>
+            onclick="handleRedo()" title="Redo (Ctrl + Y)">↻</button>
     <button type="button"
       onmousedown="event.preventDefault()"
       onclick="showMarginModal()"
@@ -336,10 +339,13 @@ title="Select hidden image (Ctrl + click)"
 
 
 
-  <!-- 3) jSuites JS -->
-  <script src="https://cdn.jsdelivr.net/npm/jsuites/dist/jsuites.min.js"></script>
+  <!-- Pdf download -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+  <!-- 3) jSuites JS-->
+  <!-- <script src="https://cdn.jsdelivr.net/npm/jsuites/dist/jsuites.min.js"></script> -->
   <!-- 4) Jspreadsheet-CE v4 JS -->
-  <script src="https://cdn.jsdelivr.net/npm/jspreadsheet-ce@4/dist/index.min.js"></script>
+  <!-- <script src="https://cdn.jsdelivr.net/npm/jspreadsheet-ce@4/dist/index.min.js"></script> -->
   <!-- 5) Your editor logic -->
   <script src="textEditor.js"></script>
 </body>
