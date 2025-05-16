@@ -29,6 +29,19 @@
       display: flex;
       gap: 5px;
     }
+
+    #toolbar .group {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+      padding-right: 8px;
+      border-right: 1px solid #ddd;
+    }
+    #toolbar .group:last-child {
+      border-right: none;
+    }
+
+
     #toolbar button,
     #toolbar select,
     #toolbar input[type="color"] {
@@ -125,27 +138,41 @@
     .resizable {
       position: absolute;
       display: inline-block;
-      resize: both;
       overflow: hidden;
-      border: 1px dashed #ccc;
       padding: 0;
       box-sizing: border-box;
     }
+    .editor-unlocked .resizable {
+      cursor: move;
+    }
+
     .resizable.front { z-index: 10 !important; }
     .resizable.back  { z-index: -1 !important; }
 
-    /* Drag handle in the top-right corner */
-    .resizable .drag-handle {
+    .resize-handle {
+      width: 10px;
+      height: 10px;
+      background: #444;
       position: absolute;
-      top: 4px;
-      right: 4px;
-      width: 16px;
-      height: 16px;
-      cursor: move;
-      z-index: 1000;
-      pointer-events: auto;
-      background: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%208%208'%3E%3Cpath%20d='M0%208%20L8%200%20M4%208%20L8%204%20M0%204%20L4%200'%20stroke='%23888'%20stroke-width='1'/%3E%3C/svg%3E") no-repeat center;
+      z-index: 20;
     }
+
+    .resize-handle.tl { top: -4px; left: -4px; cursor: nwse-resize; }
+    .resize-handle.tr { top: -4px; right: -4px; cursor: nesw-resize; }
+    .resize-handle.bl { bottom: -4px; left: -4px; cursor: nesw-resize; }
+    .resize-handle.br { bottom: -4px; right: -4px; cursor: nwse-resize; }
+
+    .resize-handle.t { top: -4px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+    .resize-handle.r { right: -4px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+    .resize-handle.b { bottom: -4px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+    .resize-handle.l { left: -4px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+
+
+    .resizable:not(.selected) .resize-handle,
+    .resizable:not(.selected) .drag-handle {
+      display: none;
+    }
+
 
     /* Ensure the image fills its wrapper and doesn’t intercept clicks */
     .resizable img {
@@ -158,7 +185,7 @@
     }
     .resizable.selected {
       z-index: 1000 !important;
-      border: 2px solid #007BFF !important;
+      border: 1px solid #007BFF !important;
     }
     .resizable.back.selected {
       z-index: 1000 !important;
@@ -175,65 +202,68 @@
   <button id="toggleLockBtn" type="button" onmousedown="event.preventDefault()" 
   title="Lock or unlock editing">Lock Editing</button>
   <div id="toolbar">
-    <button onmousedown="event.preventDefault()"
-            onclick="exec('bold')" title="Bold (Ctrl + B)"><b>B</b></button>
-    <button onmousedown="event.preventDefault()"
-            onclick="exec('italic')" title="Italic (Ctrl + I)"><i>I</i></button>
-    <button onmousedown="event.preventDefault()"
-            onclick="exec('underline')" title="Underline (Ctrl + U)"><u>U</u></button>
-    <button onmousedown="event.preventDefault()"
-            onclick="exec('strikeThrough')" title="Strike"><s>S</s></button>
+    <div id="group">
+      <button onmousedown="event.preventDefault()"
+              onclick="exec('bold')" title="Bold (Ctrl + B)"><b>B</b></button>
+      <button onmousedown="event.preventDefault()"
+              onclick="exec('italic')" title="Italic (Ctrl + I)"><i>I</i></button>
+      <button onmousedown="event.preventDefault()"
+              onclick="exec('underline')" title="Underline (Ctrl + U)"><u>U</u></button>
+      <button onmousedown="event.preventDefault()"
+              onclick="exec('strikeThrough')" title="Strike"><s>S</s></button>        
+    </div>  
 
-    <select onchange="exec('formatBlock', this.value)">
-      <option value="">Normal</option>
-      <option value="H1">H1</option>
-      <option value="H2">H2</option>
-      <option value="H3">H3</option>
-      <option value="P">P</option>
+    <div id="group">
+      <select onchange="exec('formatBlock', this.value)">
+        <option value="">Normal</option>
+        <option value="H1">H1</option>
+        <option value="H2">H2</option>
+        <option value="H3">H3</option>
+        <option value="P">P</option>
+      </select>
+
+      <select onchange="exec('fontName', this.value)">
+        <option value="">Font</option>
+        <option value="Arial">Arial</option>
+        <option value="Courier New">Courier New</option>
+        <option value="Times New Roman">Times New Roman</option>
+      </select>
+
+      <select onchange="exec('fontSize', this.value)">
+        <option value="">Size</option>
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+        <option value="5">5</option>
+        <option value="6">6</option>
+        <option value="7">7</option>
+      </select>
+    </div>
+
+    <div id="group">
+      <input type="color" onchange="exec('foreColor', this.value)" title="Text color">
+      <input type="color" onchange="exec('hiliteColor', this.value)" title="Highlight color">
+    </div>
+
+    <div id="group">
+      <button onmousedown="event.preventDefault()"
+              onclick="exec('justifyLeft')" title="Align left">L</button>
+      <button onmousedown="event.preventDefault()"
+              onclick="exec('justifyCenter')" title="Center">C</button>
+      <button onmousedown="event.preventDefault()"
+              onclick="exec('justifyRight')" title="Right">R</button>
+    </div>
+
+    <select id="spacingMenu" title="Line Spacing">
+      <option value="" hidden selected>Line Spacing</option>
+      <option value="ls-1">1x</option>
+      <option value="ls-1.15">1.15x</option>
+      <option value="ls-1.5">1.5x</option>
+      <option value="ls-2">2x</option>
     </select>
-
-    <select onchange="exec('fontName', this.value)">
-      <option value="">Font</option>
-      <option value="Arial">Arial</option>
-      <option value="Courier New">Courier New</option>
-      <option value="Times New Roman">Times New Roman</option>
-    </select>
-
-    <select onchange="exec('fontSize', this.value)">
-      <option value="">Size</option>
-      <option value="1">1</option>
-      <option value="2">2</option>
-      <option value="3">3</option>
-      <option value="4">4</option>
-      <option value="5">5</option>
-      <option value="6">6</option>
-      <option value="7">7</option>
-    </select>
-
-    <input type="color" onchange="exec('foreColor', this.value)" title="Text color">
-    <input type="color" onchange="exec('hiliteColor', this.value)" title="Highlight color">
-
-    <button onmousedown="event.preventDefault()"
-            onclick="exec('justifyLeft')" title="Align left">L</button>
-    <button onmousedown="event.preventDefault()"
-            onclick="exec('justifyCenter')" title="Center">C</button>
-    <button onmousedown="event.preventDefault()"
-            onclick="exec('justifyRight')" title="Right">R</button>
-
-    <select id="spacingMenu" title="Spacing">
-      <option value="">Spacing</option>
-      <optgroup label="Line Spacing">
-        <option value="ls-1">1</option>
-        <option value="ls-1.15">1.15</option>
-        <option value="ls-1.5">1.5</option>
-        <option value="ls-2">2</option>
-      </optgroup>
-      <optgroup label="Paragraph Spacing">
-        <option value="pb-toggle">Toggle space before</option>
-        <option value="pa-toggle">Toggle space after</option>
-      </optgroup>
-    </select>
-
+    
+    
     <button onmousedown="event.preventDefault()"
             onclick="exec('insertUnorderedList')" title="Bullet list">• List</button>
     <button onmousedown="event.preventDefault()"
@@ -260,7 +290,7 @@
   type="button"
   onmousedown="event.preventDefault()"
   onclick="setImageZIndex('front')"
-  title="Bring image in front">⬆️</button>
+  title="Bring image in front of text">⬆️</button>
 
 <button
   type="button"
@@ -271,7 +301,7 @@
 id="pickBehind"
 type="button"
 onmousedown="event.preventDefault()"
-title="Select hidden image (Ctrl + click)"
+title="Select image behind text (Ctrl + click)"
 >🔍</button>
 
 <button
