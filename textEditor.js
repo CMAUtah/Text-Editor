@@ -4,13 +4,16 @@
   
     const undoStack = [];
     let undoIndex = -1;
-  
     function pushUndoState(action) {
-      // Remove anything ahead of current undo position
-      undoStack.splice(undoIndex + 1);
+      undoStack.splice(undoIndex+1);
       undoStack.push(action);
       undoIndex = undoStack.length - 1;
+      if (undoStack.length > 100) {
+        undoStack.shift();
+        undoIndex--;
+      }
     }
+    
     function pushDOMUndoState({ target, from, to }) {
       const id = target.dataset.uid || (target.dataset.uid = Math.random().toString(36).slice(2));
       pushUndoState({
@@ -22,6 +25,119 @@
       });
     }    
   
+    function applyUndoAction(action, direction = "undo") {
+      const editor = window.editor;
+      const delta  = direction === "undo" ? action.from : action.to;
+    
+      // re-assign UID only if we have a node
+      if (action.node && action.id) {
+        action.node.dataset.uid = action.id;
+      }
+    
+      if (action.type === "move-image") {
+        const target = editor.querySelector(`.resizable[data-uid="${action.id}"]`);
+        if (target) {
+          target.style.left = delta.left;
+          target.style.top  = delta.top;
+        }
+        // styleObserver will auto-save this
+      }
+      else if (action.type === "resize-image") {
+        const target = editor.querySelector(`.resizable[data-uid="${action.id}"]`);
+        if (target) {
+          target.style.width  = delta.width;
+          target.style.height = delta.height;
+        }
+        // styleObserver will auto-save this
+      }
+      else if (action.type === "dom-change") {
+        if (action.target) action.target.innerHTML = delta;
+        localStorage.setItem('editorContent', editor.innerHTML);
+      }
+
+      else if (action.type === "delete-image") {
+        const { id, node, parent, nextSibling } = action;
+    
+        if (direction === "undo") {
+          // re-insert the same wrapper
+          node.dataset.uid = id;
+          if (nextSibling && parent.contains(nextSibling)) {
+            parent.insertBefore(node, nextSibling);
+          } else {
+            parent.appendChild(node);
+          }
+          // 🚀 reset its observer flag so attachDragHandle will re-observe
+          node._resizeObserved = false;
+          node._resizeObserver = null;
+          attachDragHandle(node);
+        } else {
+          const wrapper = editor.querySelector(`.resizable[data-uid="${id}"]`);
+          if (wrapper) {
+            // cleanup its ResizeObserver
+            if (wrapper._resizeObserver) {
+              wrapper._resizeObserver.unobserve(wrapper);
+              wrapper._resizeObserver.disconnect();
+            }
+            wrapper.remove();
+          }
+        }
+        localStorage.setItem("editorContent", editor.innerHTML);
+      }
+    
+      else if (action.type === "delete-tab") {
+        const { node, parent, nextSibling } = action;
+        if (direction === "undo") {
+          // re-insert the tab stop
+          parent.insertBefore(node, nextSibling);
+          // if you ever observe it, reset flags here too
+          node._resizeObserved = false;
+          node._resizeObserver = null;
+          attachDragHandle?.(node);
+        } else {
+          // cleanup any observer just in case
+          if (node._resizeObserver) {
+            node._resizeObserver.unobserve(node);
+            node._resizeObserver.disconnect();
+          }
+          node.remove();
+        }
+        localStorage.setItem("editorContent", editor.innerHTML);
+      }
+
+      else if (action.type === "insert-tab") {
+        if (direction === "undo") {
+          action.node.remove();
+        } else {
+          action.parent.insertBefore(action.node, action.nextSibling);
+        }
+        localStorage.setItem('editorContent', editor.innerHTML);
+      }
+
+      else if (action.type === "margin-change") {
+        // 1️ Apply the margins visually
+        Object.assign(action.target.style, {
+          paddingTop:    delta.top,
+          paddingRight:  delta.right,
+          paddingBottom: delta.bottom,
+          paddingLeft:   delta.left,
+        });
+      
+        // 2️ Persist those margins so a reload respects your undo
+        const m = {
+          top:    parseFloat(delta.top),
+          right:  parseFloat(delta.right),
+          bottom: parseFloat(delta.bottom),
+          left:   parseFloat(delta.left),
+        };
+        localStorage.setItem("editorMargins", JSON.stringify(m));
+      
+        // 3️ Also save the content in case you rely on it elsewhere
+        localStorage.setItem("editorContent", editor.innerHTML);
+      }
+      
+    }
+                
+
     // exec wrapper
     function exec(command, value = null) {
       document.execCommand(command, false, value);
@@ -32,67 +148,25 @@
     window.handleUndo = function () {
       if (undoIndex >= 0) {
         const action = undoStack[undoIndex];
-    
-        if (action?.type === "move-image") {
-          const target = editor.querySelector(
-            `.resizable[data-uid="${action.id}"]`,
-          );
-          if (target) {
-            target.style.left = action.from.left;
-            target.style.top = action.from.top;
-          }
-    
-        } else if (action?.type === "resize-image") {
-          const target = editor.querySelector(
-            `.resizable[data-uid="${action.id}"]`,
-          );
-          if (target) {
-            target.style.width = action.from.width;
-            target.style.height = action.from.height;
-          }
-    
-        } else if (action?.type === "dom-change") {
-          action.target.innerHTML = action.from;
-        }
-    
+        applyUndoAction(action, "undo");
         undoIndex--;
       } else {
         exec("undo");
       }
     };
     
+    
   
     window.handleRedo = function () {
       if (undoIndex + 1 < undoStack.length) {
         const action = undoStack[undoIndex + 1];
-    
-        if (action?.type === "move-image") {
-          const target = editor.querySelector(
-            `.resizable[data-uid="${action.id}"]`,
-          );
-          if (target) {
-            target.style.left = action.to.left;
-            target.style.top = action.to.top;
-          }
-    
-        } else if (action?.type === "resize-image") {
-          const target = editor.querySelector(
-            `.resizable[data-uid="${action.id}"]`,
-          );
-          if (target) {
-            target.style.width = action.to.width;
-            target.style.height = action.to.height;
-          }
-    
-        } else if (action?.type === "dom-change") {
-          action.target.innerHTML = action.to;
-        }
-    
+        applyUndoAction(action, "redo");
         undoIndex++;
       } else {
         exec("redo");
       }
     };
+    
     
   
     document.addEventListener("DOMContentLoaded", () => {
@@ -171,11 +245,6 @@
       });
       
 
-      styleObserver.observe(editor, {
-        subtree: true,
-        attributes: true,
-        attributeFilter: ["style"],
-      });
   
       // restore saved margins
       const savedM = localStorage.getItem("editorMargins");
@@ -269,14 +338,33 @@
       // --- IMAGE BY URL ---
       window.imagePrompt = function () {
         const url = prompt("Enter image URL:");
-        if (url) {
-          const before = editor.innerHTML;
-          exec("insertHTML", `<div class="resizable"><img src="${url}"/></div>`);
-          const after = editor.innerHTML;
-          pushDOMUndoState({ target: editor, from: before, to: after });
-
+        if (!url) return;
+      
+        const before = editor.innerHTML;
+      
+        // 1️⃣ create the wrapper + img
+        const wrapper = document.createElement("div");
+        wrapper.className = "resizable";
+        const img = document.createElement("img");
+        img.src = url;
+        wrapper.appendChild(img);
+      
+        // 2️⃣ insert it at the current cursor (or at end)
+        const sel = window.getSelection();
+        if (sel.rangeCount) {
+          sel.getRangeAt(0).insertNode(wrapper);
+        } else {
+          editor.appendChild(wrapper);
         }
+      
+        // 3️⃣ wire up handles
+        attachDragHandle(wrapper);
+      
+        // 4️⃣ save undo state
+        const after = editor.innerHTML;
+        pushDOMUndoState({ target: editor, from: before, to: after });
       };
+      
   
       // --- TABLE PROMPT ---
       window.tablePrompt = function () {
@@ -401,6 +489,10 @@
                   height: 100%!important;
                   object-fit: fill!important;
                   }
+                  #editor-print .resizable .resize-handle {
+                    display: none !important;
+                  }
+
                   #editor-print .resizable .drag-handle { display: none!important; }
               }
               `;
@@ -466,6 +558,9 @@
                   width: 100% !important;
                   height: 100% !important;
                   object-fit: fill !important;
+              }
+              #editor-print .resizable .resize-handle {
+                  display: none !important;
               }
               #editor-print .resizable .drag-handle {
                   display: none !important;
@@ -565,25 +660,51 @@
         "click",
         () => (marginModal.style.display = "none"),
       );
+
       marginOk.addEventListener("click", () => {
-        const before = editor.innerHTML;
-        editor.style.paddingTop = marginTop.value + "in";
-        editor.style.paddingRight = marginRight.value + "in";
+        // capture old padding
+        const beforeStyles = {
+          top:    editor.style.paddingTop,
+          right:  editor.style.paddingRight,
+          bottom: editor.style.paddingBottom,
+          left:   editor.style.paddingLeft,
+        };
+
+        // apply new margins
+        editor.style.paddingTop    = marginTop.value    + "in";
+        editor.style.paddingRight  = marginRight.value  + "in";
         editor.style.paddingBottom = marginBottom.value + "in";
-        editor.style.paddingLeft = marginLeft.value + "in";
-        marginModal.style.display = "none";
+        editor.style.paddingLeft   = marginLeft.value   + "in";
+        marginModal.style.display  = "none";
+
+        // persist settings
         localStorage.setItem(
           "editorMargins",
           JSON.stringify({
-            top: marginTop.value,
-            right: marginRight.value,
+            top:    marginTop.value,
+            right:  marginRight.value,
             bottom: marginBottom.value,
-            left: marginLeft.value,
-          }),
+            left:   marginLeft.value,
+          })
         );
-        const after = editor.innerHTML;
-        pushDOMUndoState({ target: editor, from: before, to: after });
+
+        // capture new padding
+        const afterStyles = {
+          top:    editor.style.paddingTop,
+          right:  editor.style.paddingRight,
+          bottom: editor.style.paddingBottom,
+          left:   editor.style.paddingLeft,
+        };
+
+        // push custom undo state
+        pushUndoState({
+          type:   "margin-change",
+          from:   beforeStyles,
+          to:     afterStyles,
+          target: editor,
+        });
       });
+
   
       // --- WRAP EXISTING IMAGES + attach handles ---
       (function wrapExistingImages() {
@@ -750,33 +871,41 @@
         // ⏱️ Only observe resizing once per wrapper
         if (!wrapper._resizeObserved) {
           wrapper._resizeObserved = true;
-      
+
           const ro = new ResizeObserver((entries) => {
-            entries.forEach((ent) => {
+            for (const ent of entries) {
               const target = ent.target;
+
+              // 🚫 If the element is no longer in the DOM, stop observing
+              if (!document.body.contains(target)) {
+                ro.unobserve(target); // just stop observing this one, not all
+                return;
+              }
+
               const wRect = ent.contentRect;
               const pRect = editor.getBoundingClientRect();
               const left = target.offsetLeft;
               const top = target.offsetTop;
-      
+
+              // Keep within editor bounds
               if (wRect.width > pRect.width - left)
                 target.style.width = pRect.width - left + "px";
               if (wRect.height > pRect.height - top)
                 target.style.height = pRect.height - top + "px";
-      
+
               const id = target.dataset.uid || (target.dataset.uid = Math.random().toString(36).slice(2));
               const width = target.style.width;
               const height = target.style.height;
-      
+
               if (!target._resizeState) {
                 target._resizeState = {
                   from: { width, height },
                   timeout: null,
                 };
               }
-      
+
               clearTimeout(target._resizeState.timeout);
-      
+
               target._resizeState.timeout = setTimeout(() => {
                 const from = target._resizeState.from;
                 const to = {
@@ -793,10 +922,12 @@
                 }
                 target._resizeState = null;
               }, 300);
-            });
+            }
           });
-      
           ro.observe(wrapper);
+
+          // 💾 Store reference for manual cleanup if needed later
+          wrapper._resizeObserver = ro;
         }
       }
       
@@ -904,35 +1035,43 @@
         });
       }
       
-      // 1) Ctrl/Cmd+click to pick hidden images
+      // — UPDATE your existing click listener to include both “pick hidden image” and “ctrl-click link” logic:
       editor.addEventListener("click", (e) => {
-        if (!(e.ctrlKey || e.metaKey)) return;
-        if (e.target.closest(".resizable")) return;
-        const { clientX: x, clientY: y } = e;
-        for (let w of editor.querySelectorAll(".resizable.back")) {
-          const r = w.getBoundingClientRect();
-          if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
-            document
-              .querySelectorAll(".resizable.selected")
-              .forEach((n) => n.classList.remove("selected"));
-            w.classList.add("selected");
-            window.selectedWrapper = w;
-            e.preventDefault();
-            e.stopImmediatePropagation(); // so the link-handler won’t run
-            return;
+        const isCmdClick = e.ctrlKey || e.metaKey;
+
+        // 1️⃣ Pick hidden-back image (your existing code):
+        if (isCmdClick && !e.target.closest(".resizable")) {
+          const { clientX: x, clientY: y } = e;
+          for (let w of editor.querySelectorAll(".resizable.back")) {
+            const r = w.getBoundingClientRect();
+            if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+              document
+                .querySelectorAll(".resizable.selected")
+                .forEach(n => n.classList.remove("selected"));
+              w.classList.add("selected");
+              window.selectedWrapper = w;
+              e.preventDefault();
+              return;
+            }
           }
         }
-      });
-  
-      // 2) Ctrl+click open-link (runs only if not handled above)
-      editor.addEventListener("click", (e) => {
-        if (e.defaultPrevented) return;
-        const a = e.target.closest("a");
-        if (a && (e.ctrlKey || e.metaKey)) {
+
+        // 2️⃣ Ctrl/Cmd-click on a link → open in new tab
+        const anchor = e.target.closest("a");
+        if (anchor && isCmdClick) {
           e.preventDefault();
-          window.open(a.href, "_blank");
+          window.open(anchor.href, "_blank");
+          return;
         }
-      });
+
+        // 3️⃣ Deselect wrapper if clicked outside
+        if (!e.target.closest(".resizable") && window.selectedWrapper && !isLocked) {
+          window.selectedWrapper.classList.remove("selected");
+          window.selectedWrapper = null;
+        }
+      });      
+  
+
   
       // 3) 🔍 button → one-shot pick-behind mode
       // one-shot pick mode toggle
@@ -967,14 +1106,7 @@
           e.preventDefault();
         }
       });
-  
-      editor.addEventListener("click", (e) => {
-        if (isLocked) return;
-        if (!e.target.closest(".resizable") && selectedWrapper) {
-          selectedWrapper.classList.remove("selected");
-          selectedWrapper = null;
-        }
-      });
+
   
       editor.addEventListener("mousedown", (e) => {
         if (!pickMode) return;
@@ -996,57 +1128,63 @@
         }
       });
   
-      // 2) Ctrl+click open link
-      editor.addEventListener("click", (e) => {
-        if (e.defaultPrevented) return; // skip if pick-behind already ran
-        const a = e.target.closest("a");
-        if (a && (e.ctrlKey || e.metaKey)) {
-          e.preventDefault();
-          window.open(a.href, "_blank");
-        }
-      });
   
       // --- KEYDOWN HANDLING ---
       document.addEventListener("keydown", (e) => {
-        if (document.activeElement !== editor) return;
-  
+        if (!editor.contains(document.activeElement)) return;
+
+        // handle Backspace/Delete
         if (["Backspace", "Delete"].includes(e.key)) {
           const sel = window.getSelection();
           if (sel.isCollapsed && sel.rangeCount) {
             let node = sel.anchorNode;
             if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
-        
+
             // --- Delete resizable wrapper (image)
             const w = node.closest(".resizable");
             if (w) {
               e.preventDefault();
-              const before = editor.innerHTML;
 
-              const r = document.createRange();
-              r.selectNode(w);
-              sel.removeAllRanges();
-              sel.addRange(r);
-              exec("insertHTML", "");
+              // ensure stable UID
+              const uid = w.dataset.uid || (w.dataset.uid = Math.random().toString(36).slice(2));
+              const parent = w.parentNode;
+              const nextSibling = w.nextSibling;
 
-              const after = editor.innerHTML;
-              pushDOMUndoState({ target: editor, from: before, to: after });
+              // push undo
+              pushUndoState({
+                type: "delete-image",
+                id:   uid,
+                node: w,
+                parent,
+                nextSibling
+              });
+
+              // cleanup observer + remove
+              if (w._resizeObserver) {
+                w._resizeObserver.unobserve(w);
+                w._resizeObserver.disconnect();
+              }
+              w.remove();
+
+              // persist
+              localStorage.setItem("editorContent", editor.innerHTML);
               return;
             }
 
-        
             // --- Backspace before visual tab stop
             if (e.key === "Backspace") {
               const prev = node.previousSibling || node.childNodes[sel.anchorOffset - 1];
-              if (prev?.classList?.contains("visual-tab-stop")) {
+              if (prev?.classList.contains("visual-tab-stop")) {
                 e.preventDefault();
                 pushUndoState({
-                  type: "delete-tab",
-                  id: prev.dataset.uid,
-                  node: prev,
-                  parent: prev.parentNode,
+                  type:       "delete-tab",
+                  id:         prev.dataset.uid,
+                  node:       prev,
+                  parent:     prev.parentNode,
                   nextSibling: prev.nextSibling
                 });
                 prev.remove();
+                localStorage.setItem("editorContent", editor.innerHTML);
                 return;
               }
             }
@@ -1054,73 +1192,64 @@
             // --- Delete when cursor is before a visual tab stop
             if (e.key === "Delete") {
               const next = node.nextSibling || node.childNodes[sel.anchorOffset];
-              if (next?.classList?.contains("visual-tab-stop")) {
+              if (next?.classList.contains("visual-tab-stop")) {
                 e.preventDefault();
                 pushUndoState({
-                  type: "delete-tab",
-                  id: next.dataset.uid,
-                  node: next,
-                  parent: next.parentNode,
+                  type:       "delete-tab",
+                  id:         next.dataset.uid,
+                  node:       next,
+                  parent:     next.parentNode,
                   nextSibling: next.nextSibling
                 });
                 next.remove();
+                localStorage.setItem("editorContent", editor.innerHTML);
                 return;
               }
             }
-
           }
         }
-        
-  
 
+        // helper to insert a visual tab stop
         function insertVisualTabStop() {
-          const before = editor.innerHTML;
+          const sel = window.getSelection();
+          if (!sel.rangeCount) return;
+          const range = sel.getRangeAt(0);
+          range.deleteContents();
+
           const tab = document.createElement("span");
           tab.className = "visual-tab-stop";
           tab.contentEditable = "false";
           tab.innerHTML = "\u200B"; // zero-width space
           tab.style.display = "inline-block";
-          tab.style.width = "0.5in";
-          tab.style.height = "1px";
+          tab.style.width   = "0.5in";
+          tab.style.height  = "1px";
           tab.style.verticalAlign = "baseline";
-          tab.style.whiteSpace = "nowrap";
-          tab.style.userSelect = "none";
-          tab.style.pointerEvents = "none";
-          tab.style.overflow = "hidden";
-          
-        
-          const sel = window.getSelection();
-          if (!sel.rangeCount) return;
-        
-          const range = sel.getRangeAt(0);
-          range.deleteContents();
+          tab.style.whiteSpace     = "nowrap";
+          tab.style.userSelect     = "none";
+          tab.style.pointerEvents  = "none";
+          tab.style.overflow       = "hidden";
+
           range.insertNode(tab);
-        
-          // Add undo state
+
+          // single undo entry
           const id = Math.random().toString(36).slice(2);
           tab.dataset.uid = id;
-        
           pushUndoState({
-            type: "insert-tab",
+            type:       "insert-tab",
             id,
-            node: tab,
-            parent: tab.parentNode,
+            node:       tab,
+            parent:     tab.parentNode,
             nextSibling: tab.nextSibling
           });
-        
-          // move cursor after
+
           range.setStartAfter(tab);
           range.setEndAfter(tab);
           sel.removeAllRanges();
           sel.addRange(range);
-
-          const after = editor.innerHTML;
-          pushDOMUndoState({ target: editor, from: before, to: after });
+          localStorage.setItem("editorContent", editor.innerHTML);
         }
-        
-        
-        
-        // Tab indent/outdent
+
+        // Tab indent/outdent or insert visual tab
         if (e.key === "Tab") {
           e.preventDefault();
           const li = getClosestBlock();
@@ -1129,12 +1258,12 @@
           else insertVisualTabStop();
           return;
         }
-  
+
         // backspace at start of list → outdent
         if (e.key === "Backspace") {
-          const sel = window.getSelection();
-          if (sel.isCollapsed && sel.rangeCount) {
-            const r = sel.getRangeAt(0);
+          const sel2 = window.getSelection();
+          if (sel2.isCollapsed && sel2.rangeCount) {
+            const r = sel2.getRangeAt(0);
             if (r.startOffset === 0 && getClosestBlock()?.tagName === "LI") {
               e.preventDefault();
               exec("outdent");
@@ -1142,114 +1271,76 @@
             }
           }
         }
-  
-        // ctrl shortcuts
+
+        // Ctrl/Cmd shortcuts
         if (e.ctrlKey || e.metaKey) {
           switch (e.key.toLowerCase()) {
             case "b":
               e.preventDefault();
               const beforeBold = editor.innerHTML;
               exec("bold");
-              const afterBold = editor.innerHTML;
-              pushDOMUndoState({ target: editor, from: beforeBold, to: afterBold });
+              pushDOMUndoState({ target: editor, from: beforeBold, to: editor.innerHTML });
               break;
-        
             case "i":
               e.preventDefault();
               const beforeItalic = editor.innerHTML;
               exec("italic");
-              const afterItalic = editor.innerHTML;
-              pushDOMUndoState({ target: editor, from: beforeItalic, to: afterItalic });
+              pushDOMUndoState({ target: editor, from: beforeItalic, to: editor.innerHTML });
               break;
-        
             case "u":
               e.preventDefault();
               const beforeUnderline = editor.innerHTML;
               exec("underline");
-              const afterUnderline = editor.innerHTML;
-              pushDOMUndoState({ target: editor, from: beforeUnderline, to: afterUnderline });
+              pushDOMUndoState({ target: editor, from: beforeUnderline, to: editor.innerHTML });
               break;
-        
             case "z":
               e.preventDefault();
               if (undoIndex >= 0) {
-                const action = undoStack[undoIndex];
-                if (action?.type === "move-image") {
-                  const target = editor.querySelector(`.resizable[data-uid="${action.id}"]`);
-                  if (target) {
-                    target.style.left = action.from.left;
-                    target.style.top = action.from.top;
-                  }
-                } else if (action?.type === "resize-image") {
-                  const target = editor.querySelector(`.resizable[data-uid="${action.id}"]`);
-                  if (target) {
-                    target.style.width = action.from.width;
-                    target.style.height = action.from.height;
-                  }
-                } else if (action?.type === "dom-change") {
-                  action.target.innerHTML = action.from;
-                }
+                applyUndoAction(undoStack[undoIndex], "undo");
                 undoIndex--;
               } else {
                 exec("undo");
               }
               break;
-        
             case "y":
               e.preventDefault();
               if (undoIndex + 1 < undoStack.length) {
-                const action = undoStack[undoIndex + 1];
-                if (action?.type === "move-image") {
-                  const target = editor.querySelector(`.resizable[data-uid="${action.id}"]`);
-                  if (target) {
-                    target.style.left = action.to.left;
-                    target.style.top = action.to.top;
-                  }
-                } else if (action?.type === "resize-image") {
-                  const target = editor.querySelector(`.resizable[data-uid="${action.id}"]`);
-                  if (target) {
-                    target.style.width = action.to.width;
-                    target.style.height = action.to.height;
-                  }
-                } else if (action?.type === "dom-change") {
-                  action.target.innerHTML = action.to;
-                }
+                applyUndoAction(undoStack[undoIndex + 1], "redo");
                 undoIndex++;
               } else {
                 exec("redo");
               }
               break;
-        
             case "p":
               e.preventDefault();
               printContent();
               break;
           }
         }
-        
-        // --- KEYUP AUTOLINK ---
-        editor.addEventListener("keyup", (e) => {
-          if (e.key !== " " && e.key !== "Enter") return;
-          const reg = /(https?:\/\/[^\s]+)/g;
-          const sel = window.getSelection();
-          const n = sel.anchorNode;
-          if (!n || n.nodeType !== Node.TEXT_NODE) return;
-          const m = reg.exec(n.textContent);
-          if (!m) return;
-          const u = m[0];
-          const r = document.createRange();
-          r.setStart(n, m.index);
-          r.setEnd(n, m.index + u.length);
-          sel.removeAllRanges();
-          sel.addRange(r);
-          exec("createLink", u);
-          const a = sel.anchorNode.closest
-            ? sel.anchorNode.closest("a")
-            : sel.anchorNode.parentElement;
-          if (a && a.tagName === "A") a.setAttribute("target", "_blank");
-          sel.collapseToEnd();
-        });
       });
+      // --- KEYUP AUTOLINK ---
+      editor.addEventListener("keyup", function onKeyupAutolink(e) {
+        if (e.key !== " " && e.key !== "Enter") return;
+        const reg = /(https?:\/\/[^\s]+)/g;
+        const sel = window.getSelection();
+        const n = sel.anchorNode;
+        if (!n || n.nodeType !== Node.TEXT_NODE) return;
+        const m = reg.exec(n.textContent);
+        if (!m) return;
+        const u = m[0];
+        const r = document.createRange();
+        r.setStart(n, m.index);
+        r.setEnd(n, m.index + u.length);
+        sel.removeAllRanges();
+        sel.addRange(r);
+        exec("createLink", u);
+        const a = sel.anchorNode.closest
+          ? sel.anchorNode.closest("a")
+          : sel.anchorNode.parentElement;
+        if (a && a.tagName === "A") a.setAttribute("target", "_blank");
+        sel.collapseToEnd();
+      });
+
     });
   })();
   
