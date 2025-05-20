@@ -4,20 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Simple WYSIWYG Editor</title>
-
-  <!-- 1) Jspreadsheet-CE v4 CSS -->
-  <link
-    rel="stylesheet"
-    href="https://cdn.jsdelivr.net/npm/jspreadsheet-ce@4/dist/jspreadsheet.min.css"
-    type="text/css"
-  />
-
-  <!-- 2) jSuites CSS (required by Jspreadsheet) -->
-  <link
-    rel="stylesheet"
-    href="https://cdn.jsdelivr.net/npm/jsuites/dist/jsuites.min.css"
-    type="text/css"
-  />
   <style>
     body { font-family: sans-serif; margin: 20px; }
     #toolbar {
@@ -59,7 +45,15 @@
       overflow: hidden;        /* hide anything beyond the page */
       background: transparent;
       position: relative; /* keep for stacking */
+      cursor:default;
     }
+    .editor-unlocked{
+      cursor: default;
+    }
+    .editor-unlocked * {
+      cursor: text;
+    }
+
 
     #editor::before {
       content: "";
@@ -138,9 +132,10 @@
     .resizable {
       position: absolute;
       display: inline-block;
-      overflow: hidden;
+      overflow: visible;
       padding: 0;
       box-sizing: border-box;
+
     }
     .editor-unlocked .resizable {
       cursor: move;
@@ -150,23 +145,24 @@
     .resizable.back  { z-index: -1 !important; }
 
     .resize-handle {
-      width: 10px;
-      height: 10px;
+      width: 8px;
+      height: 8px;
       background: #444;
       position: absolute;
       z-index: 20;
     }
 
+    /* Corners */
     .resize-handle.tl { top: -4px; left: -4px; cursor: nwse-resize; }
     .resize-handle.tr { top: -4px; right: -4px; cursor: nesw-resize; }
     .resize-handle.bl { bottom: -4px; left: -4px; cursor: nesw-resize; }
     .resize-handle.br { bottom: -4px; right: -4px; cursor: nwse-resize; }
 
+    /* Sides */
     .resize-handle.t { top: -4px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
     .resize-handle.r { right: -4px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
     .resize-handle.b { bottom: -4px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
     .resize-handle.l { left: -4px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
-
 
     .resizable:not(.selected) .resize-handle,
     .resizable:not(.selected) .drag-handle {
@@ -190,6 +186,59 @@
     .resizable.back.selected {
       z-index: 1000 !important;
     }
+
+    .table-picker {
+      position: absolute;
+      background: #fff;
+      border: 1px solid #ccc;
+      padding: 8px;
+      display: grid;
+      grid-template-columns: repeat(10, 20px);
+      grid-gap: 2px;
+      z-index: 1000;
+    }
+    .table-picker .cell {
+      width: 20px; height: 20px;
+      background: #f5f5f5;
+      cursor: pointer;
+    }
+    .table-picker .cell.hover {
+      background: #4285f4;
+    }
+    .table-picker .label {
+      grid-column: span 10;
+      text-align: center;
+      margin-top: 4px;
+      font-size: 12px;
+    }
+    /* small invisible bars that catch drags */
+    .col-resizer,
+    .row-resizer {
+      position: absolute;
+      background: transparent;
+      user-select: none;
+      z-index: 5;
+    }
+
+    /* vertical bars for columns */
+    .col-resizer {
+      top: 0;
+      width: 6px;
+      height: 100%;
+      cursor: col-resize;
+      right: -3px;
+    }
+
+    /* horizontal bars for rows */
+    .row-resizer {
+      left: 0;
+      height: 6px;
+      width: 100%;
+      cursor: row-resize;
+      bottom: -3px;
+    }
+
+
 
   </style>
 </head>
@@ -311,8 +360,8 @@ title="Select image behind text (Ctrl + click)"
   title="Upload Image from System">📁</button>
 
 
-    <button onmousedown="event.preventDefault()"
-            onclick="tablePrompt()" title="Insert table">📊 Table</button>
+    <button id="tableBtn" onmousedown="event.preventDefault()"
+            title="Insert table">▦ Table</button>
     <button onmousedown="event.preventDefault()"
             onclick="handleUndo()" title="Undo (Ctrl + Z)">↺</button>
     <button onmousedown="event.preventDefault()"
@@ -368,14 +417,9 @@ title="Select image behind text (Ctrl + click)"
   </div>
 
 
-
   <!-- Pdf download -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
-  <!-- 3) jSuites JS-->
-  <!-- <script src="https://cdn.jsdelivr.net/npm/jsuites/dist/jsuites.min.js"></script> -->
-  <!-- 4) Jspreadsheet-CE v4 JS -->
-  <!-- <script src="https://cdn.jsdelivr.net/npm/jspreadsheet-ce@4/dist/index.min.js"></script> -->
   <!-- 5) Your editor logic -->
   <script src="textEditor.js"></script>
 </body>
