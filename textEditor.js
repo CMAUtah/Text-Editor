@@ -200,6 +200,7 @@
       let isLocked = true;
       let pickMode = false;
       let selectedWrapper = null;
+      let savedRange = null;
   
       // select wrappers on click instead of mousedown
       editor.addEventListener("click", (e) => {
@@ -367,73 +368,212 @@
       
   
       // --- TABLE PROMPT ---
-      window.tablePrompt = function () {
-        const rows = parseInt(prompt("Rows?", "5"), 10);
-        const cols = parseInt(prompt("Cols?", "5"), 10);
-        if (!rows || !cols) return;
-        // build modal + jspreadsheet as before…
-        const modal = document.createElement("div");
-        Object.assign(modal.style, {
-          position: "fixed",
-          top: 0,
-          left: 0,
-          width: "100vw",
-          height: "100vh",
-          background: "rgba(0,0,0,0.5)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 9999,
+      const tableBtn = document.getElementById('tableBtn');
+      const picker   = document.createElement('div');
+      picker.id      = 'tablePicker';
+      picker.className = 'table-picker';
+      picker.style.display = 'none';
+      toolbar.appendChild(picker);
+      
+      let pickRows = 0, pickCols = 0;
+      
+      // build grid + label
+      for (let r = 1; r <= 10; r++) {
+        for (let c = 1; c <= 10; c++) {
+          const cell = document.createElement('div');
+          cell.className = 'cell';
+          cell.dataset.r = r;
+          cell.dataset.c = c;
+          picker.appendChild(cell);
+        }
+      }
+      const label = document.createElement('div');
+      label.className = 'label';
+      label.textContent = '0 × 0';
+      picker.appendChild(label);
+      
+      // show picker
+      tableBtn.addEventListener('click', (e) => {
+        // save current cursor location
+        const sel = window.getSelection();
+        if (sel.rangeCount) savedRange = sel.getRangeAt(0);
+      
+        // show the grid
+        const rect = tableBtn.getBoundingClientRect();
+        picker.style.top  = rect.bottom + 4 + 'px';
+        picker.style.left = rect.left  + 'px';
+        picker.style.display = 'grid';
+      });
+      
+      
+      
+      // hide on outside click
+      document.addEventListener('click', e => {
+        if (!picker.contains(e.target) && e.target !== tableBtn) {
+          picker.style.display = 'none';
+        }
+      });
+      
+      // hover to set size
+      picker.addEventListener('mouseover', e => {
+        if (!e.target.classList.contains('cell')) return;
+        pickRows = +e.target.dataset.r;
+        pickCols = +e.target.dataset.c;
+        label.textContent = `${pickRows} × ${pickCols}`;
+        picker.querySelectorAll('.cell').forEach(div => {
+          const r = +div.dataset.r, c = +div.dataset.c;
+          div.classList.toggle('hover', r <= pickRows && c <= pickCols);
         });
-        document.body.appendChild(modal);
-        const holder = document.createElement("div");
-        Object.assign(holder.style, {
-          background: "#fff",
-          padding: "20px",
-          borderRadius: "4px",
-          width: "80vw",
-          height: "80vh",
-          display: "flex",
-          flexDirection: "column",
+      });
+      
+      // click to insert table + undo
+      picker.addEventListener('click', e => {
+        if (!e.target.classList.contains('cell')) return;
+        picker.style.display = 'none';
+      
+        // restore cursor
+        if (savedRange) {
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(savedRange);
+          savedRange = null;
+        }
+      
+        const before = editor.innerHTML;
+        let html = '<table><tbody>';
+        for (let r = 0; r < pickRows; r++) {
+          html += '<tr>';
+          for (let c = 0; c < pickCols; c++) {
+            html += '<td><br></td>';
+          }
+          html += '</tr>';
+        }
+        html += '</tbody></table>';
+      
+        exec('insertHTML', html);
+
+        // ★ resize handles
+        const tables = editor.querySelectorAll('table');
+        const newTable = tables[tables.length - 1];
+        attachTableResizers(newTable);
+
+        pushDOMUndoState({ target: editor, from: before, to: editor.innerHTML });
+      });
+      
+
+      
+      function attachTableResizers(table) {
+        // — wrap the table in a relative container —
+        let wrapper = table.parentElement;
+        if (!wrapper.classList.contains('table-wrapper')) {
+          wrapper = document.createElement('div');
+          wrapper.classList.add('table-wrapper');
+          Object.assign(wrapper.style, {
+            position:   'relative',
+            display:    'inline-block',
+            userSelect: 'auto',      // allow selection on children
+            pointerEvents: 'none'    // wrapper itself ignores pointer events
+          });
+          table.parentNode.insertBefore(wrapper, table);
+          wrapper.appendChild(table);
+        }
+      
+        // — restore events & selection on the table —
+        Object.assign(table.style, {
+          tableLayout: 'fixed',
+          userSelect:  'text',
+          pointerEvents: 'auto'
         });
-        modal.appendChild(holder);
-        const jspContainer = document.createElement("div");
-        Object.assign(jspContainer.style, { flex: "1", overflow: "hidden" });
-        holder.appendChild(jspContainer);
-        const data = Array.from({ length: rows }, () =>
-          Array.from({ length: cols }, () => ""),
-        );
-        const hot = jspreadsheet(jspContainer, {
-          data,
-          rowResize: true,
-          columnResize: true,
-          mergeCells: true,
-          contextMenu: true,
-          defaultColWidth: 100,
-          defaultRowHeight: 24,
-          allowInsertRow: true,
-          allowInsertColumn: true,
-          allowDeleteRow: true,
-          allowDeleteColumn: true,
-          allowEditBorder: true,
+      
+        // — clear old handles —
+        wrapper.querySelectorAll('.col-resizer, .row-resizer')
+               .forEach(h => h.remove());
+      
+        // —— vertical handles ——  
+        let cumW = table.offsetLeft;
+        const firstRow = table.rows[0] || { cells: [] };
+        Array.from(firstRow.cells).forEach(cell => {
+          cumW += cell.offsetWidth;
+          const h = document.createElement('div');
+          h.className = 'col-resizer';
+          Object.assign(h.style, {
+            position:   'absolute',
+            top:        '0',
+            left:       `${cumW - 3}px`,
+            width:      '6px',
+            height:     '100%',
+            cursor:     'col-resize',
+            zIndex:     '10',
+            background: 'transparent', // you can swap this for 'rgba(0,0,0,0.1)' while debugging
+            pointerEvents: 'auto'      // let the handle catch the mousedown
+          });
+          wrapper.appendChild(h);
+      
+          let startX, startW;
+          h.addEventListener('mousedown', e => {
+            e.preventDefault();
+            startX = e.clientX;
+            startW = cell.offsetWidth;
+            function onMove(ev) {
+              cell.style.width = (startW + ev.clientX - startX) + 'px';
+            }
+            function onUp() {
+              document.removeEventListener('mousemove', onMove);
+              document.removeEventListener('mouseup', onUp);
+              attachTableResizers(table); // reflow your handles
+            }
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+          });
         });
-        const btnBar = document.createElement("div");
-        Object.assign(btnBar.style, { textAlign: "right", marginTop: "8px" });
-        const cancelBtn = document.createElement("button");
-        cancelBtn.textContent = "Cancel";
-        const okBtn = document.createElement("button");
-        okBtn.textContent = "OK";
-        cancelBtn.style.marginRight = "8px";
-        btnBar.append(cancelBtn, okBtn);
-        holder.appendChild(btnBar);
-        cancelBtn.addEventListener("click", () => modal.remove());
-        okBtn.addEventListener("click", () => {
-          const htmlTable =
-            typeof hot.getHtml === "function" ? hot.getHtml() : "";
-          if (htmlTable) exec("insertHTML", htmlTable);
-          modal.remove();
+      
+        // —— horizontal handles ——  
+        let cumH = table.offsetTop;
+        Array.from(table.rows).forEach(row => {
+          cumH += row.offsetHeight;
+          const h = document.createElement('div');
+          h.className = 'row-resizer';
+          Object.assign(h.style, {
+            position:   'absolute',
+            left:       '0',
+            top:        `${cumH - 3}px`,
+            width:      '100%',
+            height:     '6px',
+            cursor:     'row-resize',
+            zIndex:     '10',
+            background: 'transparent', // or a light color during dev
+            pointerEvents: 'auto'
+          });
+          wrapper.appendChild(h);
+      
+          let startY, startH;
+          h.addEventListener('mousedown', e => {
+            e.preventDefault();
+            startY = e.clientY;
+            startH = row.offsetHeight;
+            function onMove(ev) {
+              row.style.height = (startH + ev.clientY - startY) + 'px';
+            }
+            function onUp() {
+              document.removeEventListener('mousemove', onMove);
+              document.removeEventListener('mouseup', onUp);
+              attachTableResizers(table);
+            }
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+          });
         });
-      };
+      }
+            
+      // re-run on window resize too
+      window.addEventListener('resize', () => {
+        document.querySelectorAll('table').forEach(t => attachTableResizers(t));
+      });
+      
+      
+      
+      
+      
   
       // --- PRINT CONTENT ---
       window.printContent = function () {
@@ -1139,17 +1279,32 @@
           if (sel.isCollapsed && sel.rangeCount) {
             let node = sel.anchorNode;
             if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
-
-            // --- Delete resizable wrapper (image)
+        
+            // — delete a table if we're inside one —
+            const tableWrapper = node.closest(".table-wrapper");
+            if (tableWrapper) {
+              e.preventDefault();
+              const before = editor.innerHTML;
+              tableWrapper.remove();
+              localStorage.setItem("editorContent", editor.innerHTML);
+              pushDOMUndoState({
+                target: editor,
+                from: before,
+                to:   editor.innerHTML
+              });
+              return;
+            }
+        
+            // — Delete resizable wrapper (image) —
             const w = node.closest(".resizable");
             if (w) {
               e.preventDefault();
-
+        
               // ensure stable UID
               const uid = w.dataset.uid || (w.dataset.uid = Math.random().toString(36).slice(2));
               const parent = w.parentNode;
               const nextSibling = w.nextSibling;
-
+        
               // push undo
               pushUndoState({
                 type: "delete-image",
@@ -1158,20 +1313,20 @@
                 parent,
                 nextSibling
               });
-
+        
               // cleanup observer + remove
               if (w._resizeObserver) {
                 w._resizeObserver.unobserve(w);
                 w._resizeObserver.disconnect();
               }
               w.remove();
-
+        
               // persist
               localStorage.setItem("editorContent", editor.innerHTML);
               return;
             }
-
-            // --- Backspace before visual tab stop
+        
+            // — Backspace before visual tab stop —
             if (e.key === "Backspace") {
               const prev = node.previousSibling || node.childNodes[sel.anchorOffset - 1];
               if (prev?.classList.contains("visual-tab-stop")) {
@@ -1188,8 +1343,8 @@
                 return;
               }
             }
-
-            // --- Delete when cursor is before a visual tab stop
+        
+            // — Delete when cursor is before a visual tab stop —
             if (e.key === "Delete") {
               const next = node.nextSibling || node.childNodes[sel.anchorOffset];
               if (next?.classList.contains("visual-tab-stop")) {
@@ -1208,6 +1363,7 @@
             }
           }
         }
+        
 
         // helper to insert a visual tab stop
         function insertVisualTabStop() {
